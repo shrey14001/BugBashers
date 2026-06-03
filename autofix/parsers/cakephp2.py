@@ -10,7 +10,7 @@ Stack trace:
 """
 
 import re
-from parsers.laravel import ParsedError, StackFrame
+from autofix.parsers.laravel import ParsedError, StackFrame
 
 
 _HEADER_RE = re.compile(
@@ -38,8 +38,8 @@ def parse(log_block: str, domain: str | None = None) -> ParsedError | None:
     level = header.group("level").upper()
     raw_msg = header.group("msg").strip()
 
-    # Normalise level
-    if "fatal" in level.lower():
+    # Normalise level (header may say "Error:" while message contains "Fatal error:")
+    if "fatal" in level.lower() or "fatal" in raw_msg.lower():
         level = "CRITICAL"
     elif level == "ERROR":
         level = "ERROR"

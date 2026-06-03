@@ -3,9 +3,10 @@ core/llm_chain.py
 LangChain prompt template + LLMChain for generating unified diff patches.
 
 Supports:
-  - OpenAI GPT-4 / GPT-4o
-  - Anthropic Claude (via langchain-anthropic)
-  - Local CodeLlama via Ollama
+  - Groq  (llama-3.3-70b-versatile)   LLM_PROVIDER=groq   + GROQ_API_KEY
+  - OpenAI GPT-4o                      LLM_PROVIDER=openai + OPENAI_API_KEY
+  - Anthropic Claude                   LLM_PROVIDER=anthropic + ANTHROPIC_API_KEY
+  - Local CodeLlama via Ollama         LLM_PROVIDER=codellama
 """
 
 import os
@@ -22,9 +23,17 @@ from langchain.output_parsers import RegexParser
 # ── LLM factory ──────────────────────────────────────────────────────────────
 
 def _build_llm():
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    provider = os.getenv("LLM_PROVIDER", "groq").lower()
 
-    if provider == "openai":
+    if provider == "groq":
+        from langchain_groq import ChatGroq
+        return ChatGroq(
+            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            temperature=0,
+            groq_api_key=os.getenv("GROQ_API_KEY"),
+        )
+
+    elif provider == "openai":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             model="gpt-4o",
@@ -40,7 +49,7 @@ def _build_llm():
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
         )
 
-    elif provider == "codellamaF":
+    elif provider == "codellama":
         # Requires Ollama running locally: `ollama pull codellama`
         from langchain_community.llms import Ollama
         return Ollama(model="codellama:13b", temperature=0)
@@ -113,7 +122,12 @@ def _extract_diff(raw_output: str) -> str:
 
 class FixGenerator:
     def __init__(self):
-        self._chain = LLMChain(llm=_build_llm(), prompt=_PROMPT)
+        self._chain: LLMChain | None = None  # built lazily on first use
+
+    def _get_chain(self) -> LLMChain:
+        if self._chain is None:
+            self._chain = LLMChain(llm=_build_llm(), prompt=_PROMPT)
+        return self._chain
 
     def generate_diff(
         self,
@@ -129,7 +143,7 @@ class FixGenerator:
         Call the LLM chain and return a cleaned unified diff string.
         Raises ValueError if no valid diff is found in the output.
         """
-        raw = self._chain.run(
+        raw = self._get_chain().run(
             framework=framework,
             error_type=error_type,
             error_message=error_message,

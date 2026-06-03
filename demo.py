@@ -23,8 +23,8 @@ from typing import Optional
 from groq import Groq
 from dotenv import load_dotenv
 
-from parsers.laravel  import parse as parse_laravel
-from parsers.cakephp2 import parse as parse_cakephp2
+from autofix.parsers.laravel  import parse as parse_laravel
+from autofix.parsers.cakephp2 import parse as parse_cakephp2
 
 load_dotenv()
 

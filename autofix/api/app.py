@@ -11,8 +11,8 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 
-from core.orchestrator import Orchestrator
-from rag.engine import RAGEngine
+from autofix.core.orchestrator import Orchestrator
+from autofix.rag.engine import RAGEngine
 
 app = FastAPI(
     title="AutoFix Agent",

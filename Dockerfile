@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Default: run the API
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "autofix.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

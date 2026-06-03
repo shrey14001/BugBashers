@@ -15,13 +15,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from parsers.laravel   import parse as parse_laravel,  ParsedError
-from parsers.cakephp2  import parse as parse_cakephp2
-from rag.engine        import RAGEngine
-from core.code_retriever import resolve_commit, get_snippet
-from core.llm_chain    import FixGenerator
-from core.notifier     import send_known_error_email
-from bitbucket.pr_creator import create_fix_pr
+from autofix.parsers.laravel   import parse as parse_laravel,  ParsedError
+from autofix.parsers.cakephp2  import parse as parse_cakephp2
+from autofix.rag.engine        import RAGEngine
+from autofix.core.code_retriever import resolve_commit, get_snippet
+from autofix.core.llm_chain    import FixGenerator
+from autofix.core.notifier     import send_known_error_email
+from autofix.bitbucket.pr_creator import create_fix_pr
 
 
 @dataclass

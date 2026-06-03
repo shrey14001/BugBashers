@@ -4,7 +4,7 @@ Redis Streams consumer — reads error log messages from the queue
 and feeds them to the Orchestrator.
 
 Run with:
-    python -m core.worker
+    python -m autofix.core.worker
 """
 
 import os
@@ -12,7 +12,7 @@ import time
 import redis
 import json
 from dotenv import load_dotenv
-from core.orchestrator import Orchestrator
+from autofix.core.orchestrator import Orchestrator
 
 load_dotenv()
 
