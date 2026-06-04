@@ -1,11 +1,14 @@
 # Core orchestration
-langchain==0.2.16
-langchain-community==0.2.16
-langchain-openai==0.1.23
-langchain-groq
+langchain>=0.3.0,<0.4
+langchain-community>=0.3.0,<0.4
+langchain-core>=0.3.0,<0.4
+langchain-openai>=0.2.0,<0.3
+langchain-groq>=0.2.0,<0.3
 
 # Vector store
 chromadb==0.5.3
+langchain-chroma>=0.1.0
+langchain-huggingface>=0.1.0
 
 # API framework
 fastapi==0.111.0

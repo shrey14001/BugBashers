@@ -16,7 +16,6 @@ load_dotenv()
 
 # ── LangChain imports ─────────────────────────────────────────────────────────
 from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.schema import Document
 
@@ -41,9 +40,12 @@ class SimilarFix:
 def _get_embedding_model():
     """
     Return the configured embedding model.
-    Falls back to a free HuggingFace model if no OpenAI key is set.
+    OpenAIEmbeddings is imported lazily so a version-mismatched langchain-openai
+    package does not crash the process when OpenAI is not in use.
+    Falls back to a free local HuggingFace model otherwise.
     """
     if os.getenv("OPENAI_API_KEY") and LLM_PROVIDER == "openai":
+        from langchain_openai import OpenAIEmbeddings
         return OpenAIEmbeddings(model="text-embedding-3-small")
     # Free fallback — runs locally, no API key needed
     return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")

@@ -15,9 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain.output_parsers import RegexParser
+from langchain_core.prompts import PromptTemplate
 
 
 # ── LLM factory ──────────────────────────────────────────────────────────────
@@ -122,11 +120,13 @@ def _extract_diff(raw_output: str) -> str:
 
 class FixGenerator:
     def __init__(self):
-        self._chain: LLMChain | None = None  # built lazily on first use
+        self._llm = None      # built lazily on first use
+        self._chain = None
 
-    def _get_chain(self) -> LLMChain:
+    def _get_chain(self):
         if self._chain is None:
-            self._chain = LLMChain(llm=_build_llm(), prompt=_PROMPT)
+            self._llm   = _build_llm()
+            self._chain = _PROMPT | self._llm
         return self._chain
 
     def generate_diff(
@@ -143,15 +143,16 @@ class FixGenerator:
         Call the LLM chain and return a cleaned unified diff string.
         Raises ValueError if no valid diff is found in the output.
         """
-        raw = self._get_chain().run(
-            framework=framework,
-            error_type=error_type,
-            error_message=error_message,
-            file_path=file_path,
-            snippet=snippet,
-            start_line=start_line,
-            end_line=end_line,
-        )
+        response = self._get_chain().invoke({
+            "framework":     framework,
+            "error_type":    error_type,
+            "error_message": error_message,
+            "file_path":     file_path,
+            "snippet":       snippet,
+            "start_line":    start_line,
+            "end_line":      end_line,
+        })
+        raw = response.content if hasattr(response, "content") else str(response)
 
         diff = _extract_diff(raw)
         if not diff:
