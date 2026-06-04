@@ -16,8 +16,7 @@ load_dotenv()
 
 # ── LangChain imports ─────────────────────────────────────────────────────────
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -47,7 +46,8 @@ def _get_embedding_model():
     if os.getenv("OPENAI_API_KEY") and LLM_PROVIDER == "openai":
         from langchain_openai import OpenAIEmbeddings
         return OpenAIEmbeddings(model="text-embedding-3-small")
-    # Free fallback — runs locally, no API key needed
+    # Free fallback — runs locally, no API key needed.
+    from langchain_community.embeddings import HuggingFaceEmbeddings
     return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 
@@ -67,10 +67,19 @@ class RAGEngine:
         Search ChromaDB for a similar past error.
         Returns a SimilarFix if score >= THRESHOLD, else None.
         """
-        results = self._store.similarity_search_with_relevance_scores(
-            query=error_text,
-            k=1,
-        )
+        try:
+            results = self._store.similarity_search_with_relevance_scores(
+                query=error_text,
+                k=1,
+            )
+        except Exception as e:
+            print(
+                f"[RAG] ChromaDB query failed — treating as novel error.\n"
+                f"      Reason: {e}\n"
+                f"      Fix: rm -rf {PERSIST_DIR}   # then re-run to rebuild the index"
+            )
+            return None
+
         if not results:
             return None
 
@@ -111,8 +120,13 @@ class RAGEngine:
                 "pr_url": pr_url or "",
             },
         )
-        self._store.add_documents([doc])
-        self._store.persist()
+        try:
+            self._store.add_documents([doc])
+        except Exception as e:
+            print(
+                f"[RAG] Could not store fix in ChromaDB: {e}\n"
+                f"      Fix: rm -rf {PERSIST_DIR}   # reset store, then re-run"
+            )
 
     def seed_from_history(self, records: list[dict]) -> None:
         """
@@ -133,6 +147,11 @@ class RAGEngine:
             )
             for r in records
         ]
-        self._store.add_documents(docs)
-        self._store.persist()
-        print(f"[RAG] Seeded {len(docs)} records into ChromaDB.")
+        try:
+            self._store.add_documents(docs)
+            print(f"[RAG] Seeded {len(docs)} records into ChromaDB.")
+        except Exception as e:
+            print(
+                f"[RAG] Seed failed: {e}\n"
+                f"      Fix: rm -rf {PERSIST_DIR}   # reset store, then seed again"
+            )

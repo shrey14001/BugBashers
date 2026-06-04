@@ -4,11 +4,15 @@ langchain-community>=0.3.0,<0.4
 langchain-core>=0.3.0,<0.4
 langchain-openai>=0.2.0,<0.3
 langchain-groq>=0.2.0,<0.3
+langchain-google-genai>=2.0.0,<3.0
+google-generativeai>=0.8.0
+google-genai>=1.0.0
+groq>=0.9.0
 
-# Vector store
+numpy>=1.26.2,<2.0.0
 chromadb==0.5.3
-langchain-chroma>=0.1.0
-langchain-huggingface>=0.1.0
+langchain-chroma>=0.1.0,<0.2.0
+sentence-transformers>=3.0.0
 
 # API framework
 fastapi==0.111.0
@@ -20,7 +24,11 @@ redis==5.0.8
 # Bitbucket
 atlassian-python-api==3.41.11
 requests==2.32.3
+requests-toolbelt>=1.0.0
 
 # Utilities
 python-dotenv==1.0.1
 pydantic==2.7.4
+
+# Dev / testing
+pytest>=8.0.0

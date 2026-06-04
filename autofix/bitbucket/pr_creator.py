@@ -70,7 +70,6 @@ def _bb(method: str, path: str, **kwargs) -> dict:
 
 def get_default_branch(repo_slug: str) -> str:
     data = _bb("GET", f"{repo_slug}")
-    return 'dummy_branch'
     return data.get("mainbranch", {}).get("name", "main")
 
 
@@ -158,6 +157,44 @@ def _diff_strip_level(diff_patch: str, rel_path: str) -> int:
     return 1
 
 
+def apply_patch_by_context(original_content: str, diff_patch: str) -> str | None:
+    """
+    Fallback patch applicator that ignores wrong @@ line numbers from the LLM.
+    Extracts -/+ pairs from the diff and does a content-based search-and-replace.
+    Returns the patched content, or None if no match was found.
+    """
+    minus_lines = [l[1:] for l in diff_patch.splitlines()
+                   if l.startswith("-") and not l.startswith("---")]
+    plus_lines  = [l[1:] for l in diff_patch.splitlines()
+                   if l.startswith("+") and not l.startswith("+++")]
+
+    if not minus_lines:
+        return None
+
+    file_lines = original_content.splitlines(keepends=True)
+
+    for old_src, new_src in zip(minus_lines, plus_lines + [""]):
+        stripped_old = old_src.strip()
+        if not stripped_old:
+            continue
+        new_file_lines = []
+        found = False
+        for line in file_lines:
+            if not found and line.strip() == stripped_old:
+                if new_src:
+                    indent = len(line) - len(line.lstrip())
+                    new_file_lines.append(" " * indent + new_src.strip() + "\n")
+                found = True
+            else:
+                new_file_lines.append(line)
+        if found:
+            file_lines = new_file_lines
+
+    # Return only if something actually changed
+    patched = "".join(file_lines)
+    return patched if patched != original_content else None
+
+
 def apply_patch_to_content(
     original_content: str,
     diff_patch: str,
@@ -190,6 +227,7 @@ def apply_patch_to_content(
             cwd=tmpdir,
             capture_output=True,
             text=True,
+            timeout=30,
         )
         if result.returncode == 0:
             with open(target_path) as f:

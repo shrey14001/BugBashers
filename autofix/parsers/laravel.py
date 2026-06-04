@@ -35,12 +35,40 @@ class ParsedError:
     url: str | None = None
     raw: str = ""
 
+    # Paths that belong to the framework / shared libs — never the root cause
+    _SKIP_PREFIXES = (
+        "/usr/share/",
+        "/vendor/",
+    )
+    _SKIP_FRAGMENTS = ("/vendor/", "framework/src/", "Cake/")
+
     def top_frame(self) -> StackFrame | None:
-        # Skip vendor / framework files; pick first app-level frame
+        """First non-vendor, non-framework frame (basic heuristic)."""
         for frame in self.stack_frames:
             if "/vendor/" not in frame.file and "framework" not in frame.file:
                 return frame
         return self.stack_frames[0] if self.stack_frames else None
+
+    def best_frame(self) -> StackFrame | None:
+        """
+        Strongest heuristic for finding the actual application frame:
+        - Skips framework/shared-lib prefixes (Cake core, Laravel framework,
+          shared /usr/share/… paths)
+        - Prefers frames whose path contains /sites/ or a known app pattern
+        - Falls back to top_frame() if nothing matches
+        """
+        def _is_app(frame: StackFrame) -> bool:
+            f = frame.file
+            if any(f.startswith(p) for p in self._SKIP_PREFIXES):
+                return False
+            if any(seg in f for seg in self._SKIP_FRAGMENTS):
+                return False
+            return True
+
+        for frame in self.stack_frames:
+            if _is_app(frame):
+                return frame
+        return self.top_frame()
 
     def embedding_text(self) -> str:
         """Text used for ChromaDB embedding & similarity search."""

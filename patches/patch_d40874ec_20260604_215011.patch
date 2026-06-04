@@ -1,0 +1,10 @@
+--- a/app/Controller/OrdersController.php
++++ b/app/Controller/OrdersController.php
+@@ -650,7 +650,6 @@
+      *@todo this page will be depericated in future.new page will be orders/newindex.
+      */
+ 	function index() {
+-		$this->Order->findByStatus( array( 'orderstate_id' => 1 ) );
+ 		return $this->redirect( array( 'action' => 'newindex' ));
+ 		if( isset( $this->companysettings['Setting']['orderretailerpic'] )){
+ 			$this->set( 'printreceipt', $this->companysettings['Setting']['orderretailerpic']);

@@ -20,7 +20,6 @@ import subprocess
 import hashlib
 import datetime
 from typing import Optional
-from groq import Groq
 from dotenv import load_dotenv
 
 from autofix.parsers.laravel  import parse as parse_laravel
@@ -37,7 +36,7 @@ load_dotenv()
 # REPO CONFIG — hardcoded for demo
 # ══════════════════════════════════════════════════════════════════════════════
 
-REPO_ROOT = "/home/divitajain/Code/bizomweb2"
+REPO_ROOT = "/Users/divitajain/Documents/Code/bizomweb2"
 
 SERVER_PREFIX_RE = re.compile(r"^/var/sites/[^/]+/")
 
@@ -118,7 +117,7 @@ def fetch_code_window(local_path: str, error_line: int):
     """
     Returns (annotated_window: str, source_lines: list[str])
 
-    Uses the local working-tree file so Groq sees the same source that
+    Uses the local working-tree file so the LLM sees the same source that
     apply_fix_and_generate_patch() reads. Falls back to git HEAD only when
     the file is not present on disk.
 
@@ -206,8 +205,26 @@ def print_known(similar):
         print(f"  Prior PR    : {similar.pr_url}")
     print("\n  ℹ️  A fix already exists — no new PR will be created.")
 
+def _llm_display_label() -> str:
+    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    if provider == "gemini":
+        return f"Gemini / {os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')}"
+    if provider == "groq":
+        return f"Groq / {os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')}"
+    return provider.upper()
+
+
+def _llm_model_name() -> str:
+    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    if provider == "gemini":
+        return os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    if provider == "groq":
+        return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
 def print_fix(diff: str, root_cause: str, explanation: str, confidence: str):
-    section("🤖 AI-GENERATED FIX  (Groq / Llama-3.3-70b)")
+    section(f"🤖 AI-GENERATED FIX  ({_llm_display_label()})")
     print(f"\n  Root Cause  : {root_cause}")
     print(f"  Confidence  : {confidence}%")
     print(f"\n  Explanation : {explanation}")
@@ -225,8 +242,8 @@ def print_fix(diff: str, root_cause: str, explanation: str, confidence: str):
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LLM FIX GENERATION
-# Tries LangChain FixGenerator first; falls back to direct Groq SDK if
-# langchain_groq has a version conflict with langchain_core.
+# Tries LangChain FixGenerator first; falls back to direct provider SDK
+# (Gemini or Groq) when LangChain packages have version conflicts.
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _parse_diff_for_lines(diff: str, error_message: str) -> tuple[str, str]:
@@ -249,39 +266,8 @@ def _parse_diff_for_lines(diff: str, error_message: str) -> tuple[str, str]:
     return "N/A", "N/A"
 
 
-def _generate_fix_langchain(parsed, code_window: str, rel_path: str,
-                             start_line: int, end_line: int) -> dict:
-    """Use LangChain FixGenerator (requires compatible langchain_groq)."""
-    # Keep >>> markers so the LLM knows which line to fix
-    diff = FixGenerator().generate_diff(
-        framework=parsed.framework,
-        error_type=parsed.error_type,
-        error_message=parsed.error_message,
-        file_path=rel_path,
-        snippet=code_window,
-        start_line=start_line,
-        end_line=end_line,
-    )
-    old_line, new_line = _parse_diff_for_lines(diff, parsed.error_message)
-    return {
-        "root_cause":  f"{parsed.error_type}: {parsed.error_message[:100]}",
-        "confidence":  "95",
-        "explanation": f"Replace `{old_line.strip()}` with the corrected form.",
-        "old_line":    old_line,
-        "new_line":    new_line,
-        "_diff":       diff,
-    }
-
-
-def _generate_fix_groq_direct(parsed, code_window: str, rel_path: str) -> dict:
-    """Direct Groq SDK fallback — no LangChain dependency."""
-    from groq import Groq as GroqClient
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        print("\n  ❌ GROQ_API_KEY not set — add it to .env")
-        sys.exit(1)
-    client = GroqClient(api_key=api_key)
-    prompt = f"""You are a senior {parsed.framework} PHP developer.
+def _fix_prompt(parsed, code_window: str, rel_path: str) -> str:
+    return f"""You are a senior {parsed.framework} PHP developer.
 A production 5xx error occurred. Analyse the code and identify the fix.
 
 ## Error
@@ -305,12 +291,63 @@ EXPLANATION: <one or two sentences>
 OLD_LINE: <copy the buggy line exactly, including all leading whitespace>
 NEW_LINE: <the fixed version, same leading whitespace>"""
 
-    response = client.chat.completions.create(
-        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
+
+def _generate_fix_langchain(parsed, code_window: str, rel_path: str,
+                             start_line: int, end_line: int) -> dict:
+    """Use LangChain FixGenerator."""
+    # Keep >>> markers so the LLM knows which line to fix
+    diff = FixGenerator().generate_diff(
+        framework=parsed.framework,
+        error_type=parsed.error_type,
+        error_message=parsed.error_message,
+        file_path=rel_path,
+        snippet=code_window,
+        start_line=start_line,
+        end_line=end_line,
     )
-    raw = response.choices[0].message.content
+    old_line, new_line = _parse_diff_for_lines(diff, parsed.error_message)
+    return {
+        "root_cause":  f"{parsed.error_type}: {parsed.error_message[:100]}",
+        "confidence":  "95",
+        "explanation": f"Replace `{old_line.strip()}` with the corrected form.",
+        "old_line":    old_line,
+        "new_line":    new_line,
+        "_diff":       diff,
+    }
+
+
+def _generate_fix_direct(parsed, code_window: str, rel_path: str) -> dict:
+    """Direct provider SDK fallback — no LangChain dependency."""
+    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    prompt = _fix_prompt(parsed, code_window, rel_path)
+
+    if provider == "gemini":
+        import google.generativeai as genai
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            print("\n  ❌ GEMINI_API_KEY not set — add it to .env")
+            sys.exit(1)
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
+        response = model.generate_content(
+            prompt,
+            generation_config={"temperature": 0},
+        )
+        raw = response.text
+    else:
+        from groq import Groq as GroqClient
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            print("\n  ❌ GROQ_API_KEY not set — add it to .env")
+            sys.exit(1)
+        client = GroqClient(api_key=api_key)
+        response = client.chat.completions.create(
+            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+        )
+        raw = response.choices[0].message.content
+
     return {
         "root_cause":  _extract("ROOT_CAUSE",  raw),
         "confidence":  _extract("CONFIDENCE",  raw),
@@ -324,10 +361,11 @@ NEW_LINE: <the fixed version, same leading whitespace>"""
 def generate_fix(parsed, code_window: str, local_path: str) -> dict:
     """
     Tries LangChain FixGenerator (production path).
-    Falls back to direct Groq SDK when langchain packages have version conflicts.
+    Falls back to direct provider SDK when langchain packages have version conflicts.
     """
     rel_path = os.path.relpath(local_path, REPO_ROOT)
-    provider = os.getenv("LLM_PROVIDER", "groq").upper()
+    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    provider_label = provider.upper()
 
     numbered_lines = [
         l for l in code_window.splitlines()
@@ -337,21 +375,26 @@ def generate_fix(parsed, code_window: str, local_path: str) -> dict:
     end_line   = int(re.search(r"\d+", numbered_lines[-1]).group()) if numbered_lines else start_line
 
     try:
-        print(f"\n  Sending to {provider} via LangChain ({os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')})...")
+        print(f"\n  Sending to {provider_label} via LangChain ({_llm_model_name()})...")
         result = _generate_fix_langchain(parsed, code_window, rel_path, start_line, end_line)
-        # If LangChain diff missed the error line, fall back to direct Groq (>>>-aware prompt)
+        # If LangChain diff missed the error line, fall back to direct SDK (>>>-aware prompt)
         token_match = re.search(r"::(\w+)\(", parsed.error_message)
         token = token_match.group(1) if token_match else ""
         if token and token not in result.get("_diff", ""):
-            print(f"  ⚠️  LangChain diff did not touch `{token}` — falling back to direct Groq SDK.")
-            return _generate_fix_groq_direct(parsed, code_window, rel_path)
+            print(f"  ⚠️  LangChain diff did not touch `{token}` — falling back to direct {provider_label} SDK.")
+            return _generate_fix_direct(parsed, code_window, rel_path)
         return result
     except (ImportError, Exception) as e:
         if "ModelProfile" in str(e) or isinstance(e, ImportError):
-            print(f"  ⚠️  LangChain/Groq version conflict — falling back to direct Groq SDK.")
-            print(f"      Fix: pip install \"langchain-groq<1.0\" or upgrade langchain-core to 0.3.x")
-            print(f"\n  Sending to {provider} via direct Groq SDK...")
-            return _generate_fix_groq_direct(parsed, code_window, rel_path)
+            hint = (
+                'pip install "langchain-groq<1.0" or upgrade langchain-core to 0.3.x'
+                if provider == "groq"
+                else "pip install langchain-google-genai google-generativeai"
+            )
+            print(f"  ⚠️  LangChain/{provider_label} version conflict — falling back to direct SDK.")
+            print(f"      Fix: {hint}")
+            print(f"\n  Sending to {provider_label} via direct SDK...")
+            return _generate_fix_direct(parsed, code_window, rel_path)
         raise
 
 
@@ -541,7 +584,7 @@ def run_demo(raw_log: str):
 
     print_snippet(code_window, local_path)
 
-    # 5. Generate fix via Groq (returns old_line + new_line)
+    # 5. Generate fix via LLM (returns old_line + new_line)
     result = generate_fix(parsed, code_window, local_path)
 
     # 6. Build patch — use LangChain diff directly when available
