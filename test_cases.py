@@ -20,69 +20,189 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 from autofix.core.orchestrator import Orchestrator
 
 TESTS = {
-#     "cakephp_known_1": {
-#         "group": "known",
-#         "log": """2026-06-04 08:41:02 Error: Fatal error: Call to undefined method Order::findByStatus() in /usr/share/php/Cake_2.10/Cake/Model/Model.php on line 512
-# Stack trace:
-# #0 /var/sites/demo.bizom.in/app/Controller/OrdersController.php(654): Order->findByStatus(Array)
-# #1 /usr/share/php/Cake_2.10/Cake/Controller/Controller.php(491): OrdersController->invokeAction('index', Array)
-# #4 {main}""",
-#     },
-#     "cakephp_known_2": {
-#         "group": "known",
-#         "log": """2026-06-05 11:00:00 Error: Fatal error: Call to undefined method Order::findByStatus() in /usr/share/php/Cake_2.10/Cake/Model/Model.php on line 512
-# Stack trace:
-# #0 /var/sites/demo.bizom.in/app/Controller/OrdersController.php(653): Order->findByStatus(array('orderstate_id'=>1))
-# #4 {main}""",
-#     },
-#     "cakephp_novel_wrong_method": {
-#         "group": "novel",
-#         "note": "Often matches KNOWN (~0.97) — same Model.php:512 embedding",
-#         "log": """2026-06-04 09:00:00 Error: Fatal error: Call to undefined method Order::findByState() in /usr/share/php/Cake_2.10/Cake/Model/Model.php on line 512
-# Stack trace:
-# #0 /var/sites/demo.bizom.in/app/Controller/OrdersController.php(653): Order->findByState(Array)
-# #4 {main}""",
+
+    # ── Laravel novel cases ────────────────────────────────────────────────────
+
+    # "laravel_undefined_offset_task": {
+    #     "group": "novel",
+    #     "note": "bindu.bizom.in — Undefined offset in TaskRepository",
+    #     "log": (
+    #         'Undefined offset: 2866 {"userId":2866,"exception":"[object] (ErrorException(code: 0): '
+    #         'Undefined offset: 2866 at /var/sites/bindu.bizom.in/app/laravel/app/Modules/'
+    #         'TaskManagement/Repositories/TaskRepository.php:9152)\n'
+    #         '[stacktrace]\n'
+    #         '#0 /var/sites/bindu.bizom.in/app/laravel/app/Modules/TaskManagement/Repositories/'
+    #         'TaskRepository.php(9152): Illuminate\\\\Foundation\\\\Bootstrap\\\\HandleExceptions->handleError()\n'
+    #         '#1 /var/sites/bindu.bizom.in/app/laravel/app/Http/Controllers/TaskController.php(816): '
+    #         'App\\\\Modules\\\\TaskManagement\\\\Repositories\\\\TaskRepository->jointWorking()\n'
+    #         '#2 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/'
+    #         'Routing/Controller.php(54): App\\\\Http\\\\Controllers\\\\TaskController->jointWorking()"}'
+    #     ),
     # },
-#     "cakephp_novel_null_property": {
-#         "group": "novel",
-#         "log": """2026-06-04 10:15:33 Error: Fatal error: Call to a member function save() on null in /var/sites/demo.bizom.in/app/Model/Order.php on line 88
-# Stack trace:
-# #0 /var/sites/demo.bizom.in/app/Controller/OrdersController.php(210): Order->save()
-# #1 /usr/share/php/Cake_2.10/Cake/Controller/Controller.php(491): OrdersController->edit()
-# #4 {main}""",
-#     },
-    "cakephp_novel_undefined_index": {
-        "group": "novel",
-        "log": """2026-06-04 11:22:01 Error: Notice: Undefined index: outlet_id in /var/sites/demo.bizom.in/app/Controller/OutletsController.php on line 145
-Stack trace:
-#0 /var/sites/demo.bizom.in/app/Controller/OutletsController.php(145): OutletsController->view()
-#4 {main}""",
+
+    # "laravel_type_error_int_string_order": {
+    #     "group": "novel",
+    #     "note": "crax.bizom.in — int expected, string given in OrderRepository",
+    #     "log": (
+    #         'Argument 1 passed to App\\TransactionManagement\\Repositories\\OrderRepository::'
+    #         'getLatestOrders() must be of the type int, string given, called in '
+    #         '/var/sites/crax.bizom.in/app/laravel/app/CompanyManagement/Repositories/'
+    #         'OutletRepository.php on line 2830 {"userId":15829,"exception":"[object] '
+    #         '(TypeError(code: 0): Argument 1 passed to App\\\\TransactionManagement\\\\Repositories\\\\'
+    #         'OrderRepository::getLatestOrders() must be of the type int, string given, called in '
+    #         '/var/sites/crax.bizom.in/app/laravel/app/CompanyManagement/Repositories/'
+    #         'OutletRepository.php on line 2830 at /var/sites/crax.bizom.in/app/laravel/app/'
+    #         'TransactionManagement/Repositories/OrderRepository.php:93)\n'
+    #         '[stacktrace]\n'
+    #         '#0 /var/sites/crax.bizom.in/app/laravel/app/CompanyManagement/Repositories/'
+    #         'OutletRepository.php(2830): App\\\\TransactionManagement\\\\Repositories\\\\'
+    #         'OrderRepository->getLatestOrders()\n'
+    #         '#1 /var/sites/crax.bizom.in/app/laravel/app/CompanyManagement/Repositories/'
+    #         'OutletRepository.php(2621): App\\\\CompanyManagement\\\\Repositories\\\\'
+    #         'OutletRepository->getOutletReportData()\n'
+    #         '#5 /var/sites/crax.bizom.in/app/laravel/app/Http/Controllers/OutletController.php(373): '
+    #         'App\\\\CompanyManagement\\\\Repositories\\\\OutletRepository->getOutletsInfoInternal()"}'
+    #     ),
+    # },
+
+    # "laravel_undefined_index_sale_call": {
+    #     "group": "novel",
+    #     "note": "glas.bizom.in — Undefined index: sale in CallRepository",
+    #     "log": (
+    #         'Undefined index: sale {"userId":480,"exception":"[object] (ErrorException(code: 0): '
+    #         'Undefined index: sale at /var/sites/glas.bizom.in/app/laravel/app/'
+    #         'TransactionManagement/Repositories/CallRepository.php:4621)\n'
+    #         '[stacktrace]\n'
+    #         '#0 /var/sites/glas.bizom.in/app/laravel/app/TransactionManagement/Repositories/'
+    #         'CallRepository.php(4621): Illuminate\\\\Foundation\\\\Bootstrap\\\\HandleExceptions->handleError()\n'
+    #         '#1 /var/sites/glas.bizom.in/app/laravel/app/Http/Controllers/CallController.php(118): '
+    #         'App\\\\TransactionManagement\\\\Repositories\\\\CallRepository->perFormanceForUserInternal()\n'
+    #         '#2 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/'
+    #         'Routing/Controller.php(54): App\\\\Http\\\\Controllers\\\\CallController->performanceForUser()"}'
+    #     ),
+    # },
+
+    # "laravel_type_error_array_null_outlet": {
+    #     "group": "novel",
+    #     "note": "bajajelectricals.bizom.in — array expected, null given in CommonUtils",
+    #     "log": (
+    #         'Argument 1 passed to App\\Utils\\CommonUtils::convertToObject() must be of the type '
+    #         'array, null given, called in /var/sites/bajajelectricals.bizom.in/app/laravel/app/'
+    #         'Http/Controllers/OutletController.php on line 189 {"userId":9122,"exception":"[object] '
+    #         '(TypeError(code: 0): Argument 1 passed to App\\\\Utils\\\\CommonUtils::convertToObject() '
+    #         'must be of the type array, null given, called in /var/sites/bajajelectricals.bizom.in/'
+    #         'app/laravel/app/Http/Controllers/OutletController.php on line 189 at '
+    #         '/var/sites/bajajelectricals.bizom.in/app/laravel/app/Utils/CommonUtils.php:1801)\n'
+    #         '[stacktrace]\n'
+    #         '#0 /var/sites/bajajelectricals.bizom.in/app/laravel/app/Http/Controllers/'
+    #         'OutletController.php(189): App\\\\Utils\\\\CommonUtils::convertToObject()\n'
+    #         '#1 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/'
+    #         'Routing/Controller.php(54): App\\\\Http\\\\Controllers\\\\OutletController->edit()"}'
+    #     ),
+    # },
+
+    # "laravel_array_merge_object_call": {
+    #     "group": "novel",
+    #     "note": "sidsfarm.bizom.in — array_merge got object in CallRepository",
+    #     "log": (
+    #         'array_merge(): Expected parameter 1 to be an array, object given {"userId":41,'
+    #         '"exception":"[object] (ErrorException(code: 0): array_merge(): Expected parameter 1 '
+    #         'to be an array, object given at /var/sites/sidsfarm.bizom.in/app/laravel/app/'
+    #         'TransactionManagement/Repositories/CallRepository.php:1512)\n'
+    #         '[stacktrace]\n'
+    #         '#0 [internal function]: Illuminate\\\\Foundation\\\\Bootstrap\\\\HandleExceptions->handleError()\n'
+    #         '#1 /var/sites/sidsfarm.bizom.in/app/laravel/app/TransactionManagement/Repositories/'
+    #         'CallRepository.php(1512): array_merge()\n'
+    #         '#2 /var/sites/sidsfarm.bizom.in/app/laravel/app/Http/Controllers/CallController.php(165): '
+    #         'App\\\\TransactionManagement\\\\Repositories\\\\CallRepository->getMyCallsInternal()\n'
+    #         '#3 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/'
+    #         'Routing/Controller.php(54): App\\\\Http\\\\Controllers\\\\CallController->getMycalls()"}'
+    #     ),
+    # },
+
+    # "laravel_undefined_index_freeskuprice": {
+    #     "group": "novel",
+    #     "note": "g-next-mt.bizom.in — Undefined index: freeskuprice in PaymentSaleService",
+    #     "log": (
+    #         'Undefined index: freeskuprice {"userId":320,"exception":"[object] (ErrorException(code: 0): '
+    #         'Undefined index: freeskuprice at /var/sites/g-next-mt.bizom.in/app/laravel/app/'
+    #         'TransactionManagement/Services/PaymentSaleService.php:1080)\n'
+    #         '[stacktrace]\n'
+    #         '#0 /var/sites/g-next-mt.bizom.in/app/laravel/app/TransactionManagement/Services/'
+    #         'PaymentSaleService.php(1080): Illuminate\\\\Foundation\\\\Bootstrap\\\\HandleExceptions->handleError()\n'
+    #         '#1 /var/sites/g-next-mt.bizom.in/app/laravel/app/TransactionManagement/Services/'
+    #         'PaymentSaleService.php(614): App\\\\TransactionManagement\\\\Services\\\\'
+    #         'PaymentSaleService->initSettingProperties()\n'
+    #         '#2 /var/sites/g-next-mt.bizom.in/app/laravel/app/TransactionManagement/Repositories/'
+    #         'PaymentRepository.php(25136): App\\\\TransactionManagement\\\\Services\\\\'
+    #         'PaymentSaleService->saveSale()\n'
+    #         '#3 /var/sites/g-next-mt.bizom.in/app/laravel/app/Http/Controllers/'
+    #         'PaymentController.php(1032): App\\\\TransactionManagement\\\\Repositories\\\\'
+    #         'PaymentRepository->addPrimarySale()"}'
+    #     ),
+    # },
+
+    # # ── Duplicate pair — tests the KNOWN dedup path ────────────────────────────
+    # # First occurrence is novel (generates fix + PR), second should be caught as KNOWN.
+
+    # "laravel_sql_fordate_like_novel": {
+    #     "group": "novel",
+    #     "note": "esskaybeauty.bizom.in — SQLSTATE column not found (first occurrence → novel)",
+    #     "log": (
+    #         "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'Payment.fordate LIKE' in "
+    #         "'where clause' {\"userId\":283,\"exception\":\"[object] (Illuminate\\\\Database\\\\"
+    #         "QueryException(code: 42S22): SQLSTATE[42S22]: Column not found: 1054 Unknown column "
+    #         "'Payment.fordate LIKE' in 'where clause' at /usr/share/vendor_bizom/laravel/"
+    #         "laravel_8_20251024/laravel/framework/src/Illuminate/Database/Connection.php:712)\n"
+    #         "[stacktrace]\n"
+    #         "#0 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/"
+    #         "Database/Connection.php(672): Illuminate\\\\Database\\\\Connection->runQueryCallback()\n"
+    #         "#12 /var/sites/esskaybeauty.bizom.in/app/laravel/app/TransactionManagement/Repositories/"
+    #         "PaymentRepository.php(14255): Yajra\\\\DataTables\\\\QueryDataTable->make()\n"
+    #         "#13 /var/sites/esskaybeauty.bizom.in/app/laravel/app/Http/Controllers/"
+    #         "PaymentController.php(715): App\\\\TransactionManagement\\\\Repositories\\\\"
+    #         "PaymentRepository->getInvoicesForReturnInternal()\"}"
+    #     ),
+    # },
+
+    "laravel_sql_fordate_like_known": {
+        "group": "known",
+        "note": "pureplaydms.bizom.in — same SQLSTATE error, different domain (should be KNOWN)",
+        "log": (
+            "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'Payment.fordate LIKE' in "
+            "'where clause' {\"userId\":697,\"exception\":\"[object] (Illuminate\\\\Database\\\\"
+            "QueryException(code: 42S22): SQLSTATE[42S22]: Column not found: 1054 Unknown column "
+            "'Payment.fordate LIKE' in 'where clause' at /usr/share/vendor_bizom/laravel/"
+            "laravel_8_20251024/laravel/framework/src/Illuminate/Database/Connection.php:712)\n"
+            "[stacktrace]\n"
+            "#0 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/"
+            "Database/Connection.php(672): Illuminate\\\\Database\\\\Connection->runQueryCallback()\n"
+            "#12 /var/sites/pureplaydms.bizom.in/app/laravel/app/TransactionManagement/Repositories/"
+            "PaymentRepository.php(14225): Yajra\\\\DataTables\\\\QueryDataTable->make()\n"
+            "#13 /var/sites/pureplaydms.bizom.in/app/laravel/app/Http/Controllers/"
+            "PaymentController.php(715): App\\\\TransactionManagement\\\\Repositories\\\\"
+            "PaymentRepository->getInvoicesForReturnInternal()\"}"
+        ),
     },
-#     "cakephp_novel_missing_class": {
-#         "group": "novel",
-#         "log": """2026-06-04 12:01:44 Error: Fatal error: Class 'InvalidReportHelper' not found in /var/sites/demo.bizom.in/app/Controller/ReportsController.php on line 32
-# Stack trace:
-# #0 /var/sites/demo.bizom.in/app/Controller/ReportsController.php(32): ReportsController->index()
-# #4 {main}""",
-#     },
-#     "laravel_novel_function_name": {
-#         "group": "novel",
-#         "log": (
-#             'Function name must be a string {"userId":177,"exception":"[object] (Error(code: 0): '
-#             'Function name must be a string at /var/sites/demo.bizom.in/app/laravel/app/'
-#             'CompanyManagement/Repositories/OutletRepository.php:14252)\n'
-#             '[stacktrace]\n'
-#             '#0 /var/sites/demo.bizom.in/app/laravel/app/CompanyManagement/Repositories/'
-#             'OutletRepository.php(14215): App\\CompanyManagement\\Repositories\\OutletRepository->getExtraParams()\n'
-#             '#1 /var/sites/demo.bizom.in/app/laravel/app/Http/Controllers/'
-#             'OutletController.php(1914): App\\CompanyManagement\\Repositories\\OutletRepository->'
-#             'getPendingInvoicesMultiDistributorInternal()"}'
-#         ),
-#     },
-#     "unparseable_garbage": {
-#         "group": "error",
-#         "log": "random text without timestamp or stacktrace",
-#     },
+
+    # # ── CakePHP2 novel case ────────────────────────────────────────────────────
+
+    # "cakephp_argument_count_claims": {
+    #     "group": "novel",
+    #     "note": "happilo.bizom.in — too few arguments to ClaimsController::deleteClaimFromCart()",
+    #     "log": (
+    #         "Error: [ArgumentCountError] Too few arguments to function "
+    #         "ClaimsController::deleteClaimFromCart(), 0 passed and exactly 1 expected\n"
+    #         "Request URL: /claims/deleteClaimFromCart\n"
+    #         "Stack Trace:\n"
+    #         "#0 [internal function]: ClaimsController->deleteClaimFromCart()\n"
+    #         "#1 /usr/share/php/Cake_2.10/Cake/Controller/Controller.php(499): ReflectionMethod->invokeArgs()\n"
+    #         "#2 /usr/share/php/Cake_2.10/Cake/Routing/Dispatcher.php(193): Controller->invokeAction()\n"
+    #         "#3 /usr/share/php/Cake_2.10/Cake/Routing/Dispatcher.php(167): Dispatcher->_invoke()\n"
+    #         "#4 /var/sites/happilo.bizom.in/app/webroot/index.php(161): Dispatcher->dispatch()\n"
+    #         "#5 {main}"
+    #     ),
+    # },
 }
 
 
@@ -115,7 +235,7 @@ def main():
         print(f"\n{'='*60}\n{name}", flush=True)
         if spec.get("note"):
             print(f"  note: {spec['note']}", flush=True)
-        r = o.process(spec["log"], domain="demo.bizom.in")
+        r = o.process(spec["log"], domain=spec.get("domain"))  # None = let parser extract from log
         print(f"  status={r.status}  similarity={r.similarity}  pr={r.pr_url or '-'}", flush=True)
         if r.detail:
             print(f"  detail={r.detail[:200]}", flush=True)

@@ -26,8 +26,8 @@ from autofix.core.notifier     import send_known_error_email
 from autofix.bitbucket.pr_creator import create_fix_pr
 
 # ── Local-repo fallback config ────────────────────────────────────────────────
-# Set REPO_ROOT + BITBUCKET_REPO_SLUG in .env to enable the local fallback when
-# DEPLOYMENT_API_BASE is not yet configured.
+# REPO_ROOT is used as a fallback when the Bizom version API is unreachable
+# (e.g. running locally without VPN). Set in .env.
 REPO_ROOT           = os.getenv("REPO_ROOT", "")
 SERVER_PREFIX_RE    = re.compile(r"^/var/sites/[^/]+/")
 SKIP_PREFIXES       = ("/usr/share/", "/vendor/")
@@ -157,22 +157,25 @@ class Orchestrator:
             )
 
         # 3. Resolve commit + repo from deployment API (with local fallback)
-        deployment    = None
         local_path    = None
         commit_hash   = None
         repo_slug     = None
-        repo_rel_path = None 
+        repo_rel_path = None
+        deploy_tag    = ""   # tag name used for branch naming (e.g. "staged_20260115_v1.13")
 
-        api_base = os.getenv("DEPLOYMENT_API_BASE", "")
-        api_is_placeholder = not api_base or "your-internal-api" in api_base
+        # Strip server prefix (/var/sites/<domain>/) to get repo-relative path.
+        repo_rel_path = SERVER_PREFIX_RE.sub("", top_frame.file).lstrip("/")
+        if parsed.framework == "laravel" and repo_rel_path.startswith("app/laravel/"):
+            repo_rel_path = repo_rel_path[len("app/laravel/"):]
 
-        if not api_is_placeholder:
+        if parsed.domain:
             try:
-                deployment    = resolve_commit(parsed.domain or "default")
-                commit_hash   = deployment["commit_hash"]
-                repo_slug     = deployment["repo_slug"]
-                # Strip server path prefix to get a repo-relative path
-                repo_rel_path = SERVER_PREFIX_RE.sub("", top_frame.file).lstrip("/")
+                deployment  = resolve_commit(parsed.domain, framework=parsed.framework or "cakephp2")
+                commit_hash = deployment["commit_hash"]
+                repo_slug   = deployment["repo_slug"]
+                deploy_tag  = deployment.get("tag", "")
+                tag_info    = f" (tag: {deploy_tag})" if deploy_tag else ""
+                print(f"[Orchestrator] Resolved commit {commit_hash[:8]} for domain '{parsed.domain}'{tag_info}", flush=True)
             except Exception as e:
                 print(f"[Orchestrator] Deployment API failed: {e}. Trying local fallback.")
 
@@ -184,14 +187,15 @@ class Orchestrator:
                     error_message=parsed.error_message,
                     domain=parsed.domain,
                     detail=(
-                        "Deployment API not configured and local REPO_ROOT fallback "
-                        "could not resolve the file. Set REPO_ROOT + BITBUCKET_REPO_SLUG in .env."
+                        "Could not resolve deployed commit. "
+                        "Ensure the domain is present in the log and reachable via the Bizom version API, "
+                        "or set REPO_ROOT + BITBUCKET_REPO_SLUG in .env for local fallback."
                     ),
                 )
             commit_hash   = fallback["commit_hash"]
             repo_slug     = fallback["repo_slug"]
             local_path    = fallback["local_path"]
-            repo_rel_path = fallback.get("repo_rel_path", top_frame.file)
+            repo_rel_path = fallback.get("repo_rel_path", repo_rel_path)
 
         print(f"[Orchestrator] Frame: {top_frame.file}:{top_frame.line}", flush=True)
 
@@ -204,7 +208,7 @@ class Orchestrator:
             else:
                 snippet = get_snippet(
                     repo_slug=repo_slug,
-                    file_path=top_frame.file,
+                    file_path=repo_rel_path,   # repo-relative
                     error_line=top_frame.line,
                     commit_hash=commit_hash,
                 )
@@ -267,6 +271,7 @@ class Orchestrator:
                 error_message=parsed.error_message,
                 diff_patch=diff,
                 commit_hash=commit_hash,
+                tag=deploy_tag,
             )
         except Exception as e:
             return PipelineResult(

@@ -10,13 +10,19 @@ Stack trace:
 """
 
 import re
-from autofix.parsers.laravel import ParsedError, StackFrame
+from autofix.parsers.laravel import ParsedError, StackFrame, _extract_domain
 
 
 _HEADER_RE = re.compile(
     r"(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+"
     r"(?P<level>Error|Warning|Notice|Fatal error):\s+"
     r"(?P<msg>.+)"
+)
+
+# Timestamp-less format: "Error: [ExceptionType] message" or "Error: Fatal error: ..."
+_HEADER_NO_TS_RE = re.compile(
+    r"^(?P<level>Error|Warning|Notice|Fatal error):\s+(?P<msg>.+)",
+    re.MULTILINE
 )
 
 _PRIMARY_FILE_RE = re.compile(
@@ -31,12 +37,21 @@ _FRAME_RE = re.compile(
 def parse(log_block: str, domain: str | None = None) -> ParsedError | None:
     """Parse a CakePHP 2 multi-line log block."""
     header = _HEADER_RE.search(log_block)
-    if not header:
-        return None
-
-    timestamp = header.group("ts")
-    level = header.group("level").upper()
-    raw_msg = header.group("msg").strip()
+    if header:
+        timestamp = header.group("ts")
+        level     = header.group("level").upper()
+        raw_msg   = header.group("msg").strip()
+    else:
+        # Timestamp-less format: "Error: [ArgumentCountError] message\nStack Trace:\n#0 ..."
+        header_no_ts = _HEADER_NO_TS_RE.search(log_block)
+        if not header_no_ts:
+            return None
+        # Must have a stack trace to be considered a real error
+        if "Stack Trace:" not in log_block and "#0 " not in log_block:
+            return None
+        timestamp = "N/A"
+        level     = header_no_ts.group("level").upper()
+        raw_msg   = header_no_ts.group("msg").strip()
 
     # Normalise level (header may say "Error:" while message contains "Fatal error:")
     if "fatal" in level.lower() or "fatal" in raw_msg.lower():
@@ -76,6 +91,6 @@ def parse(log_block: str, domain: str | None = None) -> ParsedError | None:
         error_type=error_type,
         error_message=raw_msg,
         stack_frames=frames,
-        domain=domain,
+        domain=domain or _extract_domain(log_block),
         raw=log_block
     )

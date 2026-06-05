@@ -35,26 +35,53 @@ class CodeSnippet:
 
 # ── Internal deployment API ───────────────────────────────────────────────────
 
-def resolve_commit(domain: str) -> dict:
-    """
-    Call your internal deployment API to get the current commit for a domain.
-    Returns: { commit_hash: str, repo_slug: str, repo_url: str }
-    """
-    base = os.getenv("DEPLOYMENT_API_BASE", "")
-    key  = os.getenv("DEPLOYMENT_API_KEY", "")
-    url  = f"{base}/deployments/current"
+BIZOM_VERSION_API = "https://backuplogin.bizombackup.in/companies/getCompanyVersionFromDomain"
 
+
+def _domain_to_dbname(domain: str) -> str:
+    """
+    Convert a Bizom domain to its database name.
+    e.g. "nda.bizom.in"  →  "nda_bizom_in_bizom"
+         "demo.bizom.in" →  "demo_bizom_in_bizom"
+    """
+    return domain.replace(".", "_") + "_bizom"
+
+
+def resolve_commit(domain: str, framework: str = "cakephp2") -> dict:
+    """
+    Calls the Bizom version API to get the deployed commit for a domain.
+
+    Returns: { commit_hash: str, repo_slug: str }
+      - CakePHP2 errors → commit_id field,       repo_slug from BITBUCKET_REPO_SLUG
+      - Laravel errors  → laravel_commit_id field, repo_slug from LARAVEL_REPO_SLUG
+    """
+    dbname = _domain_to_dbname(domain)
     try:
-        r = requests.get(
-            url,
-            params={"domain": domain},
-            headers={"Authorization": f"Bearer {key}"},
-            timeout=5,
+        r = requests.post(
+            BIZOM_VERSION_API,
+            json={"dbname": dbname},
+            timeout=10,
         )
         r.raise_for_status()
-        return r.json()          # { commit_hash, repo_slug, repo_url }
+        body = r.json()
+        if not body.get("Result"):
+            raise RuntimeError(f"API returned Result=false: {body.get('Reason', 'unknown')}")
+
+        data = body["Data"]
+
+        if framework == "laravel":
+            commit_hash = data["laravel_commit_id"]
+            repo_slug   = os.getenv("LARAVEL_REPO_SLUG", "bizom-laravel")
+            tag         = data.get("laravel_tag", "")
+        else:
+            commit_hash = data["commit_id"]
+            repo_slug   = os.getenv("BITBUCKET_REPO_SLUG", "bizomweb2")
+            tag         = data.get("tag", "")
+
+        return {"commit_hash": commit_hash, "repo_slug": repo_slug, "tag": tag}
+
     except Exception as e:
-        raise RuntimeError(f"Deployment API failed for domain '{domain}': {e}")
+        raise RuntimeError(f"Deployment API failed for domain '{domain}' (dbname={dbname}): {e}")
 
 
 # ── Source fetching ───────────────────────────────────────────────────────────

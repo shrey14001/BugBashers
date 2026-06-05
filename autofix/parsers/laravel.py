@@ -71,10 +71,23 @@ class ParsedError:
         return self.top_frame()
 
     def embedding_text(self) -> str:
-        """Text used for ChromaDB embedding & similarity search."""
-        top = self.top_frame()
-        frame_str = f"{top.file}:{top.line}" if top else ""
+        """Text used for ChromaDB embedding & similarity search.
+        Uses best_frame() (first app-level frame) so framework/vendor paths
+        don't dominate the vector — otherwise all DB errors would embed identically.
+        """
+        frame = self.best_frame()
+        frame_str = f"{frame.file}:{frame.line}" if frame else ""
         return f"{self.error_type}: {self.error_message}\n{frame_str}"
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+_DOMAIN_FROM_PATH_RE = re.compile(r"/var/sites/([^/]+)/")
+
+def _extract_domain(text: str) -> str | None:
+    """Extract domain from a /var/sites/<domain>/ path inside the log text."""
+    m = _DOMAIN_FROM_PATH_RE.search(text)
+    return m.group(1) if m else None
 
 
 # ── Regexes ───────────────────────────────────────────────────────────────────
@@ -166,6 +179,6 @@ def parse(log_line: str, domain: str | None = None) -> ParsedError | None:
         error_type=error_type,
         error_message=error_message,
         stack_frames=frames,
-        domain=domain,
+        domain=domain or _extract_domain(log_line),
         raw=log_line
     )
