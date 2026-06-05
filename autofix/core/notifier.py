@@ -80,11 +80,32 @@ def _build_known_error_html(
     pr_url: str | None,
     similarity_score: float,
     domain: str | None,
+    forward_ported: bool = False,
 ) -> str:
     pr_link = (
         f'<a href="{pr_url}" style="color:#2563eb">{pr_url}</a>'
         if pr_url else "N/A"
     )
+
+    if forward_ported:
+        badge         = '<span class="badge" style="background:#d1fae5;color:#065f46;">🔀 Forward-Ported</span>'
+        pr_label      = "Forward-Port PR (NEW — please review &amp; merge)"
+        action_banner = f"""
+    <div class="section" style="background:#eff6ff; border-radius:6px; padding:14px 16px; margin-top:24px;">
+      <strong>✅ A forward-port PR has been created for <em>{domain or "the affected domain"}</em>.</strong><br>
+      The fix from the original commit below has been re-applied onto the current deployment tag.<br>
+      <strong>Please review and merge the PR above to resolve this error.</strong>
+    </div>"""
+    else:
+        badge         = '<span class="badge">⚠️ Already Fixed</span>'
+        pr_label      = "Previous Fix — Pull Request"
+        action_banner = f"""
+    <div class="section" style="background:#ecfdf5; border-radius:6px; padding:14px 16px; margin-top:24px;">
+      <strong>ℹ️ No new PR was created.</strong><br>
+      The previous fix (above) should resolve this error.
+      Please verify it has been deployed to <strong>{domain or "the affected domain"}</strong>.
+    </div>"""
+
     return f"""
 <!DOCTYPE html>
 <html>
@@ -110,7 +131,7 @@ def _build_known_error_html(
 <body>
   <div class="card">
     <p style="margin:0 0 6px 0; font-size:20px; font-weight:700;">🤖 AutoFix Agent — Known Error Alert</p>
-    <span class="badge">⚠️ Already Fixed</span>
+    {badge}
 
     <div class="section">
       <div class="label">Error</div>
@@ -128,20 +149,15 @@ def _build_known_error_html(
     </div>
 
     <div class="section">
-      <div class="label">Previous Fix — Commit</div>
+      <div class="label">Original Fix — Commit</div>
       <div class="code">{commit_id}</div>
     </div>
 
     <div class="section">
-      <div class="label">Previous Fix — Pull Request</div>
+      <div class="label">{pr_label}</div>
       <div class="value">{pr_link}</div>
     </div>
-
-    <div class="section" style="background:#ecfdf5; border-radius:6px; padding:14px 16px; margin-top:24px;">
-      <strong>ℹ️ No new PR was created.</strong><br>
-      The previous fix (above) should resolve this error.
-      Please verify it has been deployed to <strong>{domain or "the affected domain"}</strong>.
-    </div>
+    {action_banner}
 
     <div class="footer">
       Sent by AutoFix Agent &nbsp;|&nbsp; Do not reply to this email.
@@ -158,18 +174,29 @@ def send_known_error_email(
     pr_url: str | None,
     similarity_score: float,
     domain: str | None,
+    forward_ported: bool = False,
 ) -> None:
     """
     Send an alert email when a known error is detected (similarity >= threshold).
     Uses the internal Bizom notification service.
+
+    forward_ported=True  → pr_url is a brand-new forward-port PR on the current
+                           deployment tag; email says "review & merge this PR".
+    forward_ported=False → pr_url is the original historical PR; email says
+                           "no new PR, verify the old fix is deployed".
     """
-    subject = f"[AutoFix] Known error on {domain or 'unknown domain'} — fix already exists"
-    body    = _build_known_error_html(
+    if forward_ported:
+        subject = f"[AutoFix] Forward-port PR created for {domain or 'unknown domain'} — review required"
+    else:
+        subject = f"[AutoFix] Known error on {domain or 'unknown domain'} — fix already exists"
+
+    body = _build_known_error_html(
         error_message=error_message,
         commit_id=commit_id,
         pr_url=pr_url,
         similarity_score=similarity_score,
         domain=domain,
+        forward_ported=forward_ported,
     )
     _post_notification_email(
         message=body,

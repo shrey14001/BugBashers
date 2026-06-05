@@ -144,6 +144,7 @@ class Orchestrator:
         )
 
         forward_pr_url = similar.pr_url   # default: link to the original PR
+        forward_ported = False
         commit_hash = repo_slug = deploy_tag = None
 
         # Step 1 — resolve current deployment
@@ -191,6 +192,7 @@ class Orchestrator:
                     tag=deploy_tag or "",
                 )
                 forward_pr_url = pr.pr_url
+                forward_ported = True
                 print(
                     f"[Orchestrator] Forward-port PR created: {forward_pr_url}",
                     flush=True,
@@ -209,6 +211,7 @@ class Orchestrator:
             pr_url=forward_pr_url,
             similarity_score=similar.score,
             domain=parsed.domain,
+            forward_ported=forward_ported,
         )
         return PipelineResult(
             status="known",
