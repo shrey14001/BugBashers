@@ -279,6 +279,24 @@ def _diff_target_file(diff_patch: str) -> str | None:
     return None
 
 
+# ── Commit diff fetcher ───────────────────────────────────────────────────────
+
+def get_commit_diff(repo_slug: str, commit_hash: str) -> str:
+    """
+    Fetch the unified diff introduced by a single commit (diff vs its parent).
+    Used by the forward-port path to re-apply a previously merged fix onto a
+    newer deployment tag.
+    """
+    url = f"{BB_BASE}/repositories/{WORKSPACE}/{repo_slug}/diff/{commit_hash}"
+    r = requests.get(url, auth=AUTH, timeout=15)
+    if not r.ok:
+        raise requests.HTTPError(
+            f"Could not fetch diff for {commit_hash}: {r.status_code} {r.reason}",
+            response=r,
+        )
+    return r.text
+
+
 # ── Tag helpers ───────────────────────────────────────────────────────────────
 
 _TAG_DATE_RE = re.compile(r"(\d{8})")

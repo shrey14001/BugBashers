@@ -24,7 +24,7 @@ from autofix.core.code_retriever import resolve_commit, get_snippet
 from autofix.core.llm_chain           import FixGenerator
 from autofix.core.investigation_agent import InvestigationAgent
 from autofix.core.notifier     import send_known_error_email
-from autofix.bitbucket.pr_creator import create_fix_pr
+from autofix.bitbucket.pr_creator import create_fix_pr, get_commit_diff
 
 # ── Local-repo fallback config ────────────────────────────────────────────────
 # REPO_ROOT is used as a fallback when the Bizom version API is unreachable
@@ -126,11 +126,87 @@ class Orchestrator:
     # ── Known error path ──────────────────────────────────────────────────────
 
     def _handle_known(self, parsed: ParsedError, similar) -> PipelineResult:
-        print(f"[Orchestrator] KNOWN error (score={similar.score}). Sending email.")
+        """
+        Known-error flow:
+          1. Resolve the *current* deployment for this domain to get the live
+             commit hash, repo slug, and tag.
+          2. Fetch the diff of the previously merged fix commit from Bitbucket.
+          3. Forward-port that diff onto the current tag by creating a new PR
+             (hotfix_… → autofix_…  exactly like the novel path).
+          4. Send the standard known-error email, now with the new forward-port
+             PR URL so reviewers have a one-click merge.
+        Falls back to email-only if the deployment API or Bitbucket is
+        unreachable (e.g. running locally without VPN).
+        """
+        print(
+            f"[Orchestrator] KNOWN error (score={similar.score}). "
+            "Attempting forward-port of existing fix."
+        )
+
+        forward_pr_url = similar.pr_url   # default: link to the original PR
+        commit_hash = repo_slug = deploy_tag = None
+
+        # Step 1 — resolve current deployment
+        if parsed.domain and similar.commit_id:
+            try:
+                deployment = resolve_commit(
+                    parsed.domain, framework=parsed.framework or "cakephp2"
+                )
+                commit_hash = deployment["commit_hash"]
+                repo_slug   = deployment["repo_slug"]
+                deploy_tag  = deployment.get("tag", "")
+                tag_info    = f" (tag: {deploy_tag})" if deploy_tag else ""
+                print(
+                    f"[Orchestrator] Forward-port: resolved commit "
+                    f"{commit_hash[:8]} for domain '{parsed.domain}'{tag_info}",
+                    flush=True,
+                )
+            except Exception as e:
+                print(
+                    f"[Orchestrator] Deployment API failed for known-error "
+                    f"forward-port: {e}. Falling back to email-only.",
+                    flush=True,
+                )
+
+        # Step 2+3 — fetch old diff and create a new forward-port PR
+        if commit_hash and repo_slug:
+            try:
+                print(
+                    f"[Orchestrator] Fetching diff of fix commit "
+                    f"{similar.commit_id[:8]}…",
+                    flush=True,
+                )
+                diff_patch = get_commit_diff(repo_slug, similar.commit_id)
+
+                if not diff_patch.strip():
+                    raise ValueError("Bitbucket returned an empty diff for that commit.")
+
+                print("[Orchestrator] Creating forward-port PR…", flush=True)
+                pr = create_fix_pr(
+                    repo_slug=repo_slug,
+                    file_path=similar.file,
+                    error_message=parsed.error_message,
+                    diff_patch=diff_patch,
+                    commit_hash=commit_hash,
+                    tag=deploy_tag or "",
+                )
+                forward_pr_url = pr.pr_url
+                print(
+                    f"[Orchestrator] Forward-port PR created: {forward_pr_url}",
+                    flush=True,
+                )
+            except Exception as e:
+                print(
+                    f"[Orchestrator] Forward-port PR failed: {e}. "
+                    "Sending email with original PR link.",
+                    flush=True,
+                )
+
+        # Step 4 — notify via email
         send_known_error_email(
             error_message=parsed.error_message,
             commit_id=similar.commit_id,
-            pr_url=similar.pr_url,
+            pr_url=forward_pr_url,
             similarity_score=similar.score,
             domain=parsed.domain,
         )
@@ -140,7 +216,7 @@ class Orchestrator:
             domain=parsed.domain,
             commit_id=similar.commit_id,
             similarity=similar.score,
-            pr_url=similar.pr_url,
+            pr_url=forward_pr_url,
         )
 
     # ── Novel error path ──────────────────────────────────────────────────────
