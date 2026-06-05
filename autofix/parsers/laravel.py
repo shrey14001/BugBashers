@@ -70,6 +70,30 @@ class ParsedError:
                 return frame
         return self.top_frame()
 
+    def app_frames(self, max_frames: int = 4) -> list["StackFrame"]:
+        """
+        Return up to max_frames unique application frames from the call chain,
+        in order from outermost (error site) to deepest caller.
+        Deduplicates by file path.
+        """
+        def _is_app(frame: StackFrame) -> bool:
+            f = frame.file
+            if any(f.startswith(p) for p in self._SKIP_PREFIXES):
+                return False
+            if any(seg in f for seg in self._SKIP_FRAGMENTS):
+                return False
+            return True
+
+        seen: set[str] = set()
+        result: list[StackFrame] = []
+        for frame in self.stack_frames:
+            if _is_app(frame) and frame.file not in seen:
+                seen.add(frame.file)
+                result.append(frame)
+                if len(result) >= max_frames:
+                    break
+        return result
+
     def embedding_text(self) -> str:
         """Text used for ChromaDB embedding & similarity search.
         Uses best_frame() (first app-level frame) so framework/vendor paths

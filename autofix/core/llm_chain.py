@@ -89,6 +89,7 @@ Your task is to produce a minimal unified diff that fixes the issue.
 2. Do NOT include explanations outside the diff block.
 3. Keep changes minimal — fix only the root cause.
 4. If the fix requires importing a class or adding a use statement, include it.
+5.Note dont change Base functions immediately.
 
 Diff:
 """

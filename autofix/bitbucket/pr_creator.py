@@ -64,7 +64,14 @@ class PRResult:
 def _bb(method: str, path: str, **kwargs) -> dict:
     url = f"{BB_BASE}/repositories/{WORKSPACE}/{path}"
     r = requests.request(method, url, auth=AUTH, timeout=15, **kwargs)
-    r.raise_for_status()
+    if not r.ok:
+        try:
+            body = r.json()
+        except Exception:
+            body = r.text[:500]
+        raise requests.HTTPError(
+            f"{r.status_code} {r.reason} — {body}", response=r
+        )
     return r.json() if r.content else {}
 
 
@@ -90,6 +97,7 @@ def get_file_content(repo_slug: str, file_path: str, commit: str) -> str:
     url = f"{BB_BASE}/repositories/{WORKSPACE}/{repo_slug}/src/{commit}/{clean}"
     r = requests.get(url, auth=AUTH, timeout=10)
     r.raise_for_status()
+    r.encoding = "utf-8"
     return r.text
 
 
@@ -109,11 +117,13 @@ def commit_file(
     r = requests.post(
         url,
         auth=AUTH,
+        # File content must be multipart (files=) to preserve UTF-8.
+        # Sending it in data= uses url-encoding which corrupts multi-byte chars.
         data={
             "branch": branch,
             "message": commit_message,
-            clean: new_content,          # filename=content
         },
+        files={clean: (clean, new_content.encode("utf-8"), "text/plain; charset=utf-8")},
         timeout=15,
     )
     r.raise_for_status()
@@ -223,11 +233,13 @@ def apply_patch_to_content(
             f.write(diff_patch)
 
         result = subprocess.run(
-            ["patch", f"-p{strip}", "-l", "--fuzz=10", "-u", "-i", "fix.patch"],
+            ["patch", f"-p{strip}", "-l", "--fuzz=10", "-u", "-i", "fix.patch",
+             "--no-backup-if-mismatch", "--force"],
             cwd=tmpdir,
             capture_output=True,
             text=True,
-            timeout=30,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
         )
         if result.returncode == 0:
             with open(target_path) as f:
@@ -245,6 +257,26 @@ def apply_patch_to_content(
         f"// {last_err.replace(chr(10), chr(10) + '// ') if last_err else 'no matching context found in file'}\n"
     )
     return original_content + note
+
+
+# ── Diff introspection ───────────────────────────────────────────────────────
+
+def _diff_target_file(diff_patch: str) -> str | None:
+    """
+    Extract the repo-relative target file path from the +++ line of the diff.
+    The LLM may have targeted a different file than the error origin
+    (e.g. a caller instead of the base trait that threw).
+    Returns None if the path cannot be determined or is /dev/null.
+    """
+    for line in diff_patch.splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].split("\t")[0].strip()
+            if path.startswith(("a/", "b/")):
+                path = path[2:]
+            path = normalize_repo_file_path(path)
+            if path and path != "dev/null":
+                return path
+    return None
 
 
 # ── Tag helpers ───────────────────────────────────────────────────────────────
@@ -288,7 +320,7 @@ def create_fix_pr(
     err_hash  = hashlib.md5(error_message.encode()).hexdigest()[:8]
 
     hotfix_branch      = f"hotfix_{tag_date}_{ts}"
-    cherry_pick_branch = f"autofix_{tag_date}_{err_hash}"
+    cherry_pick_branch = f"autofix_{tag_date}_{err_hash}_{ts}"
 
     # 1. Create hotfix base branch from the deployed commit (same point as the tag)
     create_branch(repo_slug, hotfix_branch, commit_hash)
@@ -297,21 +329,39 @@ def create_fix_pr(
     hotfix_head = get_branch_head(repo_slug, hotfix_branch)
     create_branch(repo_slug, cherry_pick_branch, hotfix_head)
 
-    # 3. Fetch original file from the deployed commit, apply AI patch
-    original = get_file_content(repo_slug, file_path, commit_hash)
-    patched  = apply_patch_to_content(original, diff_patch, file_path)
+    # 3. Determine which file the diff actually targets.
+    # The agent may have chosen a caller instead of the error origin.
+    patch_file = _diff_target_file(diff_patch) or file_path
 
-    # 4. Commit the patched file onto the cherry-pick branch
+    # Claude Code generates paths relative to the local monorepo root (e.g.
+    # bizomweb3), so Laravel files carry the app/laravel/ prefix.  Strip it
+    # so the path matches the structure of the bizom-laravel Bitbucket repo.
+    laravel_repo   = os.getenv("LARAVEL_REPO_SLUG", "bizom-laravel")
+    laravel_prefix = os.getenv("BITBUCKET_LARAVEL_PATH_PREFIX", "").strip("/")
+    if repo_slug == laravel_repo and laravel_prefix:
+        prefix_slash = laravel_prefix + "/"
+        if patch_file.startswith(prefix_slash):
+            patch_file = patch_file[len(prefix_slash):]
+
+    if patch_file != file_path:
+        print(f"[PR] Diff targets {patch_file} (error was in {file_path})", flush=True)
+
+    # 4. Fetch original file from the deployed commit, apply AI patch
+    original = get_file_content(repo_slug, patch_file, commit_hash)
+    patched  = apply_patch_to_content(original, diff_patch, patch_file)
+
+    # 5. Commit the patched file onto the cherry-pick branch
     new_commit = commit_file(
         repo_slug=repo_slug,
         branch=cherry_pick_branch,
-        file_path=file_path,
+        file_path=patch_file,
         new_content=patched,
         commit_message=f"[AUTO-FIX] {error_message[:80]}",
     )
 
     # 5. Open PR: cherry-pick branch → hotfix branch
     tag_note  = f"Based on tag `{tag}`." if tag else f"Based on commit `{commit_hash}`."
+    file_note = f"`{patch_file}`" + (f" (error origin: `{file_path}`)" if patch_file != file_path else "")
     pr_description = f"""
 ## Automated Fix — Generated by AutoFix Agent
 
@@ -321,7 +371,7 @@ def create_fix_pr(
 ```
 
 ### File Changed
-`{file_path}`
+{file_note}
 
 ### AI-Generated Patch
 ```diff

@@ -21,7 +21,8 @@ from autofix.parsers.laravel   import parse as parse_laravel,  ParsedError
 from autofix.parsers.cakephp2  import parse as parse_cakephp2
 from autofix.rag.engine        import RAGEngine
 from autofix.core.code_retriever import resolve_commit, get_snippet
-from autofix.core.llm_chain    import FixGenerator
+from autofix.core.llm_chain           import FixGenerator
+from autofix.core.investigation_agent import InvestigationAgent
 from autofix.core.notifier     import send_known_error_email
 from autofix.bitbucket.pr_creator import create_fix_pr
 
@@ -222,17 +223,23 @@ class Orchestrator:
 
         # 5. Generate diff via LLM (direct SDK / LangChain with fallback)
         print("[Orchestrator] Generating fix via LLM (may take 30–90s)…", flush=True)
-        # Use repo-relative path so LLM emits clean diff headers (a/app/... not a/var/sites/...)
         llm_file_path = repo_rel_path or top_frame.file
+        print("[Orchestrator] Starting investigation…", flush=True)
         try:
-            diff = self.fix_gen.generate_diff_with_fallback(
+            agent = InvestigationAgent(
+                repo_slug=repo_slug,
+                commit_hash=commit_hash,
+                repo_root=REPO_ROOT,
+                laravel_path_prefix=os.getenv("BITBUCKET_LARAVEL_PATH_PREFIX", "app/laravel"),
+            )
+            call_chain = parsed.app_frames(max_frames=4) if hasattr(parsed, "app_frames") else []
+            diff = agent.run(
                 framework=parsed.framework,
                 error_type=parsed.error_type,
                 error_message=parsed.error_message,
                 file_path=llm_file_path,
                 snippet=snippet.content,
-                start_line=snippet.start_line,
-                end_line=snippet.end_line,
+                app_frames=call_chain,
             )
         except Exception as e:
             return PipelineResult(
