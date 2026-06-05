@@ -165,25 +165,158 @@ TESTS = {
     #     ),
     # },
 
-    "laravel_sql_fordate_like_known": {
-        "group": "known",
-        "note": "pureplaydms.bizom.in — same SQLSTATE error, different domain (should be KNOWN)",
-        "log": (
-            "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'Payment.fordate LIKE' in "
-            "'where clause' {\"userId\":697,\"exception\":\"[object] (Illuminate\\\\Database\\\\"
-            "QueryException(code: 42S22): SQLSTATE[42S22]: Column not found: 1054 Unknown column "
-            "'Payment.fordate LIKE' in 'where clause' at /usr/share/vendor_bizom/laravel/"
-            "laravel_8_20251024/laravel/framework/src/Illuminate/Database/Connection.php:712)\n"
-            "[stacktrace]\n"
-            "#0 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/"
-            "Database/Connection.php(672): Illuminate\\\\Database\\\\Connection->runQueryCallback()\n"
-            "#12 /var/sites/pureplaydms.bizom.in/app/laravel/app/TransactionManagement/Repositories/"
-            "PaymentRepository.php(14225): Yajra\\\\DataTables\\\\QueryDataTable->make()\n"
-            "#13 /var/sites/pureplaydms.bizom.in/app/laravel/app/Http/Controllers/"
-            "PaymentController.php(715): App\\\\TransactionManagement\\\\Repositories\\\\"
-            "PaymentRepository->getInvoicesForReturnInternal()\"}"
-        ),
-    },
+    # "laravel_novel_sql_column_not_found": {
+    #     "group": "novel",
+    #     "domain": "drumsfood.bizom.in",
+    #     "log": (
+    #         "SQLSTATE[42S22]: Column not found: 1054 Unknown column "
+    #         "'Activitypicture.activity_id' in 'field list' "
+    #         '{"userId":166,"exception":"[object] '
+    #         "(Illuminate\\Database\\QueryException(code: 42S22): "
+    #         "SQLSTATE[42S22]: Column not found: 1054 Unknown column "
+    #         "'Activitypicture.activity_id' in 'field list' "
+    #         "(SQL: select Activitypicture.activity_id AS Activitypicture__activity_id, "
+    #         "Activitypicture.id AS Activitypicture__id from `activitypictures` as `ActivityPicture` where (0 = 1)) "
+    #         "at /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework"
+    #         "/src/Illuminate/Database/Connection.php:712)\n"
+    #         "[stacktrace]\n"
+    #         "#0 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework"
+    #         "/src/Illuminate/Database/Connection.php(672): Illuminate\\Database\\Connection->runQueryCallback()\n"
+    #         "#1 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework"
+    #         "/src/Illuminate/Database/Connection.php(376): Illuminate\\Database\\Connection->run()\n"
+    #         "#2 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework"
+    #         "/src/Illuminate/Database/Query/Builder.php(2414): Illuminate\\Database\\Connection->select()\n"
+    #         "#3 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework"
+    #         "/src/Illuminate/Database/Query/Builder.php(2402): Illuminate\\Database\\Query\\Builder->runSelect()\n"
+    #         "#4 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework"
+    #         "/src/Illuminate/Database/Query/Builder.php(2936): Illuminate\\Database\\Query\\Builder->Illuminate\\Database\\Query\\{closure}()\n"
+    #         "#5 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework"
+    #         "/src/Illuminate/Database/Query/Builder.php(2403): Illuminate\\Database\\Query\\Builder->onceWithColumns()\n"
+    #         "#6 /var/sites/drumsfood.bizom.in/app/laravel/app/Http/Traits/"
+    #         "LaravelFindORMTrait.php(239): Illuminate\\Database\\Query\\Builder->get()\n"
+    #         "#7 [internal function]: App\\Models\\BaseModel->findLaravel()\n"
+    #         "#8 /var/sites/drumsfood.bizom.in/app/laravel/app/Modules/CommonManagement/"
+    #         "Repositories/ActivityPicturesRepository.php(36): call_user_func_array()\n"
+    #         "#9 /var/sites/drumsfood.bizom.in/app/laravel/app/Modules/ReportManagement/"
+    #         "Repositories/ReportRepository.php(1986): App\\Modules\\CommonManagement\\Repositories\\ActivityPicturesRepository->__call()\n"
+    #         "#10 /var/sites/drumsfood.bizom.in/app/laravel/app/Modules/ReportManagement/"
+    #         "Repositories/ReportRepository.php(4626): App\\Modules\\ReportManagement\\Repositories\\ReportRepository->getActivitypics()\n"
+    #         "#11 /var/sites/drumsfood.bizom.in/app/laravel/app/Http/Controllers/"
+    #         "ReportController.php(243): App\\Modules\\ReportManagement\\Repositories\\ReportRepository->newIndexWithDateDownloadXlsInternal()"
+    #         '"}'
+    #     ),
+    # },
+
+"laravel_trying_to_access_array_offset_on_null": {
+    "group": "novel",
+    "domain": "godrejindo.bizom.in",
+    "log": (
+        "Trying to access array offset on value of type null "
+        '{"userId":1628,"exception":"[object] '
+        "(ErrorException(code: 0): Trying to access array offset on value of type null "
+        "at /var/sites/godrejindo.bizom.in/app/laravel/app/TransactionManagement/"
+        "Repositories/InventoryRepository.php:11236)\n"
+        "[stacktrace]\n"
+        "#0 /var/sites/godrejindo.bizom.in/app/laravel/app/TransactionManagement/"
+        "Repositories/InventoryRepository.php(11236): "
+        "Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError()\n"
+        "#1 /var/sites/godrejindo.bizom.in/app/laravel/app/Http/Controllers/"
+        "InventoryController.php(894): "
+        "App\\TransactionManagement\\Repositories\\InventoryRepository"
+        "->transferHistoryInternal()\n"
+        "#2 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+        "laravel/framework/src/Illuminate/Routing/Controller.php(54): "
+        "App\\Http\\Controllers\\InventoryController->transferHistory()\n"
+        "#3 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+        "laravel/framework/src/Illuminate/Routing/ControllerDispatcher.php(45): "
+        "Illuminate\\Routing\\Controller->callAction()\n"
+        "#4 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+        "laravel/framework/src/Illuminate/Routing/Route.php(262): "
+        "Illuminate\\Routing\\ControllerDispatcher->dispatch()\n"
+        "#5 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+        "laravel/framework/src/Illuminate/Routing/Route.php(205): "
+        "Illuminate\\Routing\\Route->runController()\n"
+        "#6 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+        "laravel/framework/src/Illuminate/Routing/Router.php(721): "
+        "Illuminate\\Routing\\Route->run()\n"
+        "#7 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+        "laravel/framework/src/Illuminate/Pipeline/Pipeline.php(128): "
+        "Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}()\n"
+        "#8 ...\n"
+        "#57 /var/sites/godrejindo.bizom.in/app/laravel/public/index.php(51): "
+        "Illuminate\\Foundation\\Http\\Kernel->handle()\n"
+        "#58 /var/sites/godrejindo.bizom.in/app/webroot/index.php(14): "
+        "require_once('/var/sites/godr...')\n"
+        "#59 {main}"
+        '"}'
+    ),
+},
+
+# "laravel_undefined_index_desingation_name": {
+#     "group": "novel",
+#     "domain": "nagamills.bizom.in",
+#     "log": (
+#         "Undefined index: desingation_name "
+#         '{"userId":8,"exception":"[object] '
+#         "(ErrorException(code: 0): Undefined index: desingation_name "
+#         "at /var/sites/nagamills.bizom.in/app/laravel/app/UserManagement/"
+#         "Repositories/AttendanceRepository.php:2564)\n"
+#         "[stacktrace]\n"
+#         "#0 /var/sites/nagamills.bizom.in/app/laravel/app/UserManagement/"
+#         "Repositories/AttendanceRepository.php(2564): "
+#         "Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError()\n"
+#         "#1 /var/sites/nagamills.bizom.in/app/laravel/app/Http/Controllers/"
+#         "AttendanceController.php(213): "
+#         "App\\UserManagement\\Repositories\\AttendanceRepository"
+#         "->attendanceReportDownloadInternal()\n"
+#         "#2 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+#         "laravel/framework/src/Illuminate/Routing/Controller.php(54): "
+#         "App\\Http\\Controllers\\AttendanceController"
+#         "->attendance_report_download()\n"
+#         "#3 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+#         "laravel/framework/src/Illuminate/Routing/ControllerDispatcher.php(45): "
+#         "Illuminate\\Routing\\Controller->callAction()\n"
+#         "#4 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+#         "laravel/framework/src/Illuminate/Routing/Route.php(262): "
+#         "Illuminate\\Routing\\ControllerDispatcher->dispatch()\n"
+#         "#5 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+#         "laravel/framework/src/Illuminate/Routing/Route.php(205): "
+#         "Illuminate\\Routing\\Route->runController()\n"
+#         "#6 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+#         "laravel/framework/src/Illuminate/Routing/Router.php(721): "
+#         "Illuminate\\Routing\\Route->run()\n"
+#         "#7 /usr/share/vendor_bizom/laravel/laravel_8_20251024/"
+#         "laravel/framework/src/Illuminate/Pipeline/Pipeline.php(128): "
+#         "Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}()\n"
+#         "#8 ...\n"
+#         "#61 /var/sites/nagamills.bizom.in/app/laravel/public/index.php(51): "
+#         "Illuminate\\Foundation\\Http\\Kernel->handle()\n"
+#         "#62 /var/sites/nagamills.bizom.in/app/webroot/index.php(14): "
+#         "require_once('/var/sites/naga...')\n"
+#         "#63 {main}"
+#         '"}'
+#     ),
+# },
+
+    # "laravel_sql_fordate_like_known": {
+    #     "group": "known",
+    #     "note": "pureplaydms.bizom.in — same SQLSTATE error, different domain (should be KNOWN)",
+    #     "log": (
+    #         "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'Payment.fordate LIKE' in "
+    #         "'where clause' {\"userId\":697,\"exception\":\"[object] (Illuminate\\\\Database\\\\"
+    #         "QueryException(code: 42S22): SQLSTATE[42S22]: Column not found: 1054 Unknown column "
+    #         "'Payment.fordate LIKE' in 'where clause' at /usr/share/vendor_bizom/laravel/"
+    #         "laravel_8_20251024/laravel/framework/src/Illuminate/Database/Connection.php:712)\n"
+    #         "[stacktrace]\n"
+    #         "#0 /usr/share/vendor_bizom/laravel/laravel_8_20251024/laravel/framework/src/Illuminate/"
+    #         "Database/Connection.php(672): Illuminate\\\\Database\\\\Connection->runQueryCallback()\n"
+    #         "#12 /var/sites/pureplaydms.bizom.in/app/laravel/app/TransactionManagement/Repositories/"
+    #         "PaymentRepository.php(14225): Yajra\\\\DataTables\\\\QueryDataTable->make()\n"
+    #         "#13 /var/sites/pureplaydms.bizom.in/app/laravel/app/Http/Controllers/"
+    #         "PaymentController.php(715): App\\\\TransactionManagement\\\\Repositories\\\\"
+    #         "PaymentRepository->getInvoicesForReturnInternal()\"}"
+    #     ),
+    # },
 
     # # ── CakePHP2 novel case ────────────────────────────────────────────────────
 

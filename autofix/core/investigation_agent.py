@@ -390,6 +390,9 @@ class InvestigationAgent:
             f"1. Read the error file to understand what it expects from callers.\n"
             f"2. Read each caller in the call chain — find who passes the wrong value.\n"
             f"3. Once you identify the caller with the bug, call generate_fix "
+            f"for undefined variable bug in UI check if the key is being passed from backend or not that UI must be being called from /app/Http/Controllers\n"
+            f"for undefined \n"
+            f"targeting THAT file, not the base trait.\n"
             f"targeting THAT file, not the base trait.\n"
             f"Fix only the specific line(s) causing the error."
         )
