@@ -7,6 +7,7 @@ FastAPI application exposing:
   GET  /health         — health check
 """
 
+import threading
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
@@ -24,11 +25,35 @@ orchestrator = Orchestrator()
 rag          = RAGEngine()
 
 
+@app.on_event("startup")
+async def _warm_up():
+    """Pre-load embedding model and ChromaDB so first request isn't slow."""
+    try:
+        rag.find_similar("warmup")
+        print("[Startup] RAG engine warmed up.", flush=True)
+    except Exception:
+        pass
+
+
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class ProcessRequest(BaseModel):
     log: str
     domain: Optional[str] = None
+
+
+class ErrorEventPayload(BaseModel):
+    fingerprint: str
+    tenant: str
+    error: str
+    stack_trace: str
+    framework: Optional[str] = "cakephp2"
+    exception_class: Optional[str] = None
+    category: Optional[str] = None
+    status_code: Optional[int] = None
+    endpoint: Optional[str] = None
+    source_file: Optional[str] = None
+    first_seen_at: Optional[str] = None
 
 
 class ProcessResponse(BaseModel):
@@ -90,6 +115,23 @@ def process_log(req: ProcessRequest):
         branch=result.branch,
         detail=result.detail,
     )
+
+
+@app.post("/webhook/error", status_code=202)
+def receive_error_event(payload: ErrorEventPayload):
+    """
+    Accepts a structured error event and returns 202 immediately.
+    Pipeline runs in a dedicated thread — avoids blocking the event loop
+    and prevents uvicorn signal handling from interfering with the Claude
+    Code subprocess (which caused false timeouts via BackgroundTasks).
+    """
+    thread = threading.Thread(
+        target=orchestrator.process_event,
+        args=(payload.model_dump(),),
+        daemon=True,
+    )
+    thread.start()
+    return {"accepted": True, "fingerprint": payload.fingerprint}
 
 
 @app.post("/webhook/merge")

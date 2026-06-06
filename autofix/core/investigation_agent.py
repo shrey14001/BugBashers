@@ -78,14 +78,15 @@ _TOOL_DECLARATIONS = [
         "name": "generate_fix",
         "description": (
             "Call this when you have identified the root cause. "
-            "Provide a minimal unified diff and a one-sentence explanation."
+            "Provide a MINIMAL unified diff (only the changed lines + 3 lines of context). "
+            "Do NOT output the entire file. Do NOT remove lines unrelated to the fix."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "diff": {
                     "type": "string",
-                    "description": "Unified diff (--- / +++ / @@ format)",
+                    "description": "Minimal unified diff (--- / +++ / @@ format). Only changed lines + 3 context lines. Never the full file.",
                 },
                 "explanation": {
                     "type": "string",
@@ -139,6 +140,10 @@ class InvestigationAgent:
                     framework, error_type, error_message, file_path, snippet,
                     app_frames=app_frames or [],
                 )
+            except RuntimeError as e:
+                # RuntimeError means Claude Code investigated and found nothing to fix
+                # (e.g. max turns hit on correct code). Don't fall back to Gemini.
+                raise
             except Exception as e:
                 print(
                     f"[Agent] Claude Code investigation failed ({e}) — "
@@ -199,8 +204,8 @@ class InvestigationAgent:
             app_frames=app_frames or [],
         )
 
-        timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT", "300"))
-        max_turns = int(os.getenv("CLAUDE_CODE_MAX_TURNS", "15"))
+        timeout = int(os.getenv("CLAUDE_CODE_TIMEOUT", "180"))
+        max_turns = int(os.getenv("CLAUDE_CODE_MAX_TURNS", "6"))
         cmd = [
             "claude", "-p", prompt,
             "--dangerously-skip-permissions",
@@ -223,6 +228,8 @@ class InvestigationAgent:
             text=True,
             timeout=timeout,
             env=env,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,  # isolate from uvicorn's signal group
         )
 
         stdout = result.stdout or ""
@@ -257,6 +264,14 @@ class InvestigationAgent:
             print("[Agent] Claude Code diff extracted from fenced block.", flush=True)
             return diff
 
+        # Max turns hit usually means the code is correct — don't fall back to Gemini
+        if "Reached max turns" in stdout or "Reached max turns" in stderr:
+            raise RuntimeError(
+                f"Claude Code returned no recognisable diff.\n"
+                f"stdout (first 800):\n{stdout[:800]}\n"
+                f"stderr (first 400):\n{stderr[:400]}"
+            )
+
         raise ValueError(
             f"Claude Code returned no recognisable diff.\n"
             f"stdout (first 800):\n{stdout[:800]}\n"
@@ -289,38 +304,18 @@ class InvestigationAgent:
         ) if self._is_base_file(file_path) else ""
 
         return (
-            f"You are fixing a production {framework} bug in this codebase.\n"
-            f"DO NOT modify any files. Read relevant source files, trace the root cause,\n"
-            f"then output a unified diff.\n\n"
-            f"## Error\n"
-            f"- Type    : {error_type}\n"
-            f"- Message : {error_message}\n"
-            f"- File    : {file_path}\n"
+            f"Fix this production {framework} bug. Read files as needed, then output a diff.\n\n"
+            f"Error: {error_type}: {error_message}\n"
+            f"File:  {file_path}\n"
             f"{chain_section}"
-            f"{base_warning}\n"
-            f"## Snippet at error site (>>> = error line)\n"
+            f"{base_warning}"
             f"```php\n{snippet}\n```\n\n"
-            f"## Investigation rules — follow these strictly\n\n"
-            f"### SQL / column-not-found errors\n"
-            f"- The column name in the error is the clue. Find where the ORM condition\n"
-            f"  or eager-load key is built — it will contain that exact string.\n"
-            f"- Check for case mismatches: `class_basename(Model)` returns the class name\n"
-            f"  with its exact capitalisation. If the conditions array uses a different\n"
-            f"  capitalisation, that is the bug — fix the key in the conditions array.\n"
-            f"- Do NOT touch the base ORM trait/query builder.\n\n"
-            f"### Undefined index / missing array key errors\n"
-            f"- Do NOT use `?? ''` or null-coalescing as the fix unless you can confirm\n"
-            f"  the key is genuinely optional by design.\n"
-            f"- Instead: trace back to the query or data source that fills the array.\n"
-            f"  If the key should be there, fix the query (missing SELECT column,\n"
-            f"  missing JOIN, or a typo in the column/key name).\n"
-            f"- Check for typos: e.g. `desingation_name` vs `designation_name`.\n\n"
-            f"### Call to member function on null\n"
-            f"- Do NOT add null guards as the only fix.\n"
-            f"- Find why the object is null — missing eager-load, wrong scope, or\n"
-            f"  a query that returns null when it should not.\n\n"
-            f"## Output\n"
-            f"Output ONLY the block below — no explanation, no other text:\n\n"
+            f"Rules:\n"
+            f"- Undefined index: trace to the query/source missing the key. Fix the source, not a ?? guard.\n"
+            f"- Column not found: find where the ORM key is built, fix the typo/case there.\n"
+            f"- Null method call: find why it's null (missing eager-load/scope), don't just add null guard.\n"
+            f"- NEVER modify base traits/abstract classes. Fix the caller.\n\n"
+            f"Output ONLY this — minimal diff, 3 context lines, actual line numbers, no full-file replacement:\n\n"
             f"<diff>\n"
             f"--- a/path/to/file.php\n"
             f"+++ b/path/to/file.php\n"

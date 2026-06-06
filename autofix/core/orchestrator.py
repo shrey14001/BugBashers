@@ -17,14 +17,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from autofix.parsers.laravel   import parse as parse_laravel,  ParsedError
+from autofix.parsers.laravel   import parse as parse_laravel,  ParsedError, StackFrame, _FRAME_RE
 from autofix.parsers.cakephp2  import parse as parse_cakephp2
 from autofix.rag.engine        import RAGEngine
 from autofix.core.code_retriever import resolve_commit, get_snippet
 from autofix.core.llm_chain           import FixGenerator
 from autofix.core.investigation_agent import InvestigationAgent
 from autofix.core.notifier     import send_known_error_email
-from autofix.bitbucket.pr_creator import create_fix_pr
+from autofix.bitbucket.pr_creator import create_fix_pr, get_default_branch, get_branch_head
 
 # ── Local-repo fallback config ────────────────────────────────────────────────
 # REPO_ROOT is used as a fallback when the Bizom version API is unreachable
@@ -96,6 +96,52 @@ class Orchestrator:
         self.fix_gen   = FixGenerator()
 
     # ── Main entry point ──────────────────────────────────────────────────────
+
+    def process_event(self, payload: dict) -> PipelineResult:
+        """
+        Process a structured error event (from the /webhook/error endpoint).
+        Builds a ParsedError directly from the payload instead of regex-parsing a raw log.
+        """
+        parsed = self._parse_event(payload)
+        if parsed is None:
+            return PipelineResult(
+                status="error",
+                error_message=payload.get("error", ""),
+                domain=payload.get("tenant"),
+                detail="Could not parse stack_trace — no usable frames found.",
+            )
+
+        error_text = parsed.embedding_text()
+        print(f"\n[Orchestrator] Processing event: {error_text[:120]}")
+
+        similar = self.rag.find_similar(error_text)
+        if similar:
+            return self._handle_known(parsed, similar)
+        return self._handle_novel(parsed, error_text)
+
+    def _parse_event(self, payload: dict) -> ParsedError | None:
+        stack_trace = payload.get("stack_trace", "")
+        frames: list[StackFrame] = []
+        for m in _FRAME_RE.finditer(stack_trace):
+            frames.append(StackFrame(
+                file=m.group("file").strip(),
+                line=int(m.group("line")),
+                function=m.group("func").strip(),
+            ))
+
+        if not frames:
+            return None
+
+        return ParsedError(
+            framework=payload.get("framework") or "cakephp2",
+            timestamp=payload.get("first_seen_at", "N/A"),
+            level="ERROR",
+            error_type=payload.get("exception_class") or payload.get("category") or "Error",
+            error_message=payload["error"],
+            stack_frames=frames,
+            domain=payload["tenant"],
+            raw=stack_trace,
+        )
 
     def process(self, raw_log: str, domain: str | None = None) -> PipelineResult:
         """
@@ -193,10 +239,24 @@ class Orchestrator:
                         "or set REPO_ROOT + BITBUCKET_REPO_SLUG in .env for local fallback."
                     ),
                 )
-            commit_hash   = fallback["commit_hash"]
-            repo_slug     = fallback["repo_slug"]
-            local_path    = fallback["local_path"]
-            repo_rel_path = fallback.get("repo_rel_path", repo_rel_path)
+            local_path  = fallback["local_path"]
+            # Use framework-appropriate slug — fallback only knows about the CakePHP repo
+            repo_slug = (
+                os.getenv("LARAVEL_REPO_SLUG", "bizom-laravel")
+                if parsed.framework == "laravel"
+                else fallback["repo_slug"]
+            )
+            # repo_rel_path was already correctly stripped above — don't overwrite it
+            # The local commit hash won't exist on Bitbucket — use the remote HEAD instead
+            try:
+                default_branch = get_default_branch(repo_slug)
+                commit_hash    = get_branch_head(repo_slug, default_branch)
+                print(f"[Orchestrator] Local fallback: using remote HEAD {commit_hash[:8]} "
+                      f"({default_branch}) for PR base.", flush=True)
+            except Exception as e:
+                print(f"[Orchestrator] Could not fetch remote HEAD: {e}. "
+                      f"Using local commit (PR creation may fail).", flush=True)
+                commit_hash = fallback["commit_hash"]
 
         print(f"[Orchestrator] Frame: {top_frame.file}:{top_frame.line}", flush=True)
 
@@ -279,6 +339,7 @@ class Orchestrator:
                 diff_patch=diff,
                 commit_hash=commit_hash,
                 tag=deploy_tag,
+                original_content=snippet.full_source,
             )
         except Exception as e:
             return PipelineResult(

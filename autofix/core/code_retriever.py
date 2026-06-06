@@ -32,7 +32,7 @@ BB_AUTH      = (
     os.getenv("BITBUCKET_APP_PASSWORD"),
 )
 BB_BASE      = "https://api.bitbucket.org/2.0"
-WINDOW_LINES = 30        # lines of context around the error line
+WINDOW_LINES = 15        # lines of context around the error line
 
 
 @dataclass
@@ -46,7 +46,7 @@ class CodeSnippet:
 
 # ── Internal deployment API ───────────────────────────────────────────────────
 
-BIZOM_VERSION_API = "https://backuplogin.bizombackup.in/companies/getCompanyVersionFromDomain"
+BIZOM_VERSION_API = "https://devlogin.bizomdev.in/companies/getCompanyVersionFromDomain"
 
 
 def _domain_to_dbname(domain: str) -> str:
@@ -55,7 +55,7 @@ def _domain_to_dbname(domain: str) -> str:
     e.g. "nda.bizom.in"  →  "nda_bizom_in_bizom"
          "demo.bizom.in" →  "demo_bizom_in_bizom"
     """
-    return domain.replace(".", "_") + "_bizom"
+    return domain + "_bizomdev_in_bizom"
 
 
 def resolve_commit(domain: str, framework: str = "cakephp2") -> dict:

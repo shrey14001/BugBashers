@@ -169,40 +169,169 @@ def _diff_strip_level(diff_patch: str, rel_path: str) -> int:
 
 def apply_patch_by_context(original_content: str, diff_patch: str) -> str | None:
     """
-    Fallback patch applicator that ignores wrong @@ line numbers from the LLM.
-    Extracts -/+ pairs from the diff and does a content-based search-and-replace.
-    Returns the patched content, or None if no match was found.
-    """
-    minus_lines = [l[1:] for l in diff_patch.splitlines()
-                   if l.startswith("-") and not l.startswith("---")]
-    plus_lines  = [l[1:] for l in diff_patch.splitlines()
-                   if l.startswith("+") and not l.startswith("+++")]
+    Hunk-level fallback applicator for LLM-generated diffs.
 
-    if not minus_lines:
-        return None
+    Parses each @@ hunk into (op, content) triples, locates where the hunk
+    belongs in the file (by matching context + minus lines, with fuzzy fallback),
+    then replays the hunk: skip '-' lines, keep ' ' lines, insert '+' lines.
+
+    Handles pure insertions (no '-' lines), wrong line numbers, and minor
+    content differences from the LLM. Force-applies at the stated line number
+    if all matching fails.
+    """
+    import re as _re
+    from difflib import SequenceMatcher
+
+    def _parse_diff(patch: str):
+        """Yield (hint_0based, ops) where ops = list of (op, content_without_prefix)."""
+        lines = patch.splitlines()
+        i = 0
+        while i < len(lines):
+            m = _re.match(r"^@@ -(\d+)", lines[i])
+            if m:
+                hint = int(m.group(1)) - 1
+                i += 1
+                ops = []
+                while i < len(lines) and not lines[i].startswith(("@@ ", "--- ", "+++ ")):
+                    ln = lines[i]
+                    if ln.startswith("-") and not ln.startswith("---"):
+                        ops.append(("-", ln[1:]))
+                    elif ln.startswith("+") and not ln.startswith("+++"):
+                        ops.append(("+", ln[1:]))
+                    else:
+                        # context line (starts with ' ' or is blank)
+                        ops.append((" ", ln[1:] if ln.startswith(" ") else ln))
+                    i += 1
+                if any(op != " " for op, _ in ops):
+                    yield hint, ops
+            else:
+                i += 1
+
+    def _find_start(file_lines: list, ops: list, hint: int,
+                    search_start: int, search_end: int) -> int:
+        """
+        Find the file index where this hunk starts.
+        Matches the sequence of context+minus lines (ignoring pure '+' lines).
+        Uses fuzzy comparison (ratio ≥ 0.7) to tolerate minor LLM rewrites.
+        """
+        expected = [(op, c.strip()) for op, c in ops if op in (" ", "-")]
+        if not expected:
+            return hint  # pure insertion — use hint directly
+
+        n = len(file_lines)
+        for start in range(max(0, search_start), min(n, search_end)):
+            src = start
+            ok = True
+            for op, content in expected:
+                if src >= n:
+                    ok = False
+                    break
+                if content:
+                    ratio = SequenceMatcher(
+                        None, content.lower(),
+                        file_lines[src].strip().lower()
+                    ).ratio()
+                    if ratio < 0.7:
+                        ok = False
+                        break
+                src += 1
+            if ok:
+                return start
+        return -1
 
     file_lines = original_content.splitlines(keepends=True)
+    changed    = False
 
-    for old_src, new_src in zip(minus_lines, plus_lines + [""]):
-        stripped_old = old_src.strip()
-        if not stripped_old:
-            continue
-        new_file_lines = []
-        found = False
-        for line in file_lines:
-            if not found and line.strip() == stripped_old:
-                if new_src:
-                    indent = len(line) - len(line.lstrip())
-                    new_file_lines.append(" " * indent + new_src.strip() + "\n")
-                found = True
-            else:
-                new_file_lines.append(line)
-        if found:
-            file_lines = new_file_lines
+    for hint, ops in _parse_diff(diff_patch):
+        n = len(file_lines)
 
-    # Return only if something actually changed
+        # Locate hunk: near hint → whole file → force at hint
+        start = _find_start(file_lines, ops, hint, hint - 50, hint + 100)
+        if start == -1:
+            start = _find_start(file_lines, ops, hint, 0, n)
+        if start == -1:
+            start = min(max(0, hint), n - 1)
+
+        # Replay the hunk
+        result  = list(file_lines[:start])
+        src_idx = start
+        for op, content in ops:
+            if op == " ":
+                if src_idx < n:
+                    result.append(file_lines[src_idx])
+                src_idx += 1
+            elif op == "-":
+                src_idx += 1            # delete: advance source, don't emit
+            else:                       # "+"
+                ref   = file_lines[src_idx] if src_idx < n else (result[-1] if result else "")
+                ind   = " " * (len(ref) - len(ref.lstrip()))
+                result.append(ind + content.strip() + "\n")
+
+        result.extend(file_lines[src_idx:])
+        file_lines = result
+        changed    = True
+
+    if not changed:
+        return None
     patched = "".join(file_lines)
     return patched if patched != original_content else None
+
+
+def _normalise_diff(diff: str) -> str:
+    """
+    Fix common LLM diff formatting issues before handing to GNU patch:
+    1. Blank context lines inside hunks must start with a single space.
+    2. Lines that are not valid diff lines inside a hunk are promoted to context.
+    3. @@ hunk header counts are recomputed to match the actual hunk content,
+       so GNU patch never hits "unexpected end of file".
+    """
+    import re as _re
+
+    lines = diff.splitlines()
+
+    # ── Pass 1: fix blank/unlabelled lines inside hunks ───────────────────────
+    fixed: list[str] = []
+    in_hunk = False
+    for line in lines:
+        if line.startswith(("--- ", "+++ ")):
+            in_hunk = False
+            fixed.append(line)
+        elif line.startswith("@@ "):
+            in_hunk = True
+            fixed.append(line)
+        elif in_hunk:
+            if line == "":
+                fixed.append(" ")
+            elif line[0] not in (" ", "+", "-", "\\"):
+                fixed.append(" " + line)
+            else:
+                fixed.append(line)
+        else:
+            fixed.append(line)
+
+    # ── Pass 2: recompute @@ counts to match actual hunk content ─────────────
+    _HUNK_RE = _re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)")
+    out: list[str] = []
+    i = 0
+    while i < len(fixed):
+        line = fixed[i]
+        m = _HUNK_RE.match(line)
+        if m:
+            old_start, new_start, rest = m.group(1), m.group(2), m.group(3)
+            i += 1
+            hunk: list[str] = []
+            while i < len(fixed) and not fixed[i].startswith(("@@ ", "--- ", "+++ ")):
+                hunk.append(fixed[i])
+                i += 1
+            old_count = sum(1 for l in hunk if l and l[0] in (" ", "-"))
+            new_count = sum(1 for l in hunk if l and l[0] in (" ", "+"))
+            out.append(f"@@ -{old_start},{old_count} +{new_start},{new_count} @@{rest}")
+            out.extend(hunk)
+        else:
+            out.append(line)
+            i += 1
+
+    return "\n".join(out)
 
 
 def apply_patch_to_content(
@@ -219,12 +348,44 @@ def apply_patch_to_content(
       3. Original + TODO comment
     """
     rel_path = normalize_repo_file_path(repo_relative_path)
+    diff_patch = _normalise_diff(diff_patch)
     strip = _diff_strip_level(diff_patch, rel_path)
     last_err = ""
 
+    # 0) Reject diffs that delete >40% of original lines — LLMs sometimes
+    #    emit full-file replacements instead of minimal patches.
+    orig_line_count = len(original_content.splitlines())
+    deletions = sum(
+        1 for ln in diff_patch.splitlines()
+        if ln.startswith("-") and not ln.startswith("---")
+    )
+    additions = sum(
+        1 for ln in diff_patch.splitlines()
+        if ln.startswith("+") and not ln.startswith("+++")
+    )
+    print(
+        f"[PR] Patch stats: orig={orig_line_count} lines, "
+        f"diff -{deletions}/+{additions} lines", flush=True
+    )
+    if orig_line_count > 10 and deletions > orig_line_count * 0.4:
+        pct = int(deletions / orig_line_count * 100)
+        note = (
+            "\n// TODO: AUTO-FIX PATCH COULD NOT BE APPLIED\n"
+            f"// Diff was too destructive — deleted {pct}% of file lines "
+            f"({deletions} of {orig_line_count}). LLM likely generated a full-file replacement.\n"
+        )
+        print(f"[PR] Rejected destructive diff: {deletions}/{orig_line_count} lines deleted ({pct}%)", flush=True)
+        return original_content + note
+
     # 1) patch CLI
     with tempfile.TemporaryDirectory() as tmpdir:
-        target_path = os.path.join(tmpdir, rel_path)
+        # Place the file at the path the diff header actually references
+        # (after stripping the a/ or b/ prefix), not the caller's rel_path.
+        # If they differ (e.g. diff has app/laravel/... but rel_path is
+        # app/...) the patch command would say "No file to patch".
+        diff_target = _diff_target_file(diff_patch)
+        file_in_tmpdir = diff_target if diff_target else rel_path
+        target_path = os.path.join(tmpdir, file_in_tmpdir)
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
 
         with open(target_path, "w") as f:
@@ -243,13 +404,32 @@ def apply_patch_to_content(
         )
         if result.returncode == 0:
             with open(target_path) as f:
-                return f.read()
-        last_err = (result.stderr or result.stdout or "").strip()
+                patched_by_gnu = f.read()
+            # Sanity check: LLM diffs with bad context can cause GNU patch to
+            # "succeed" but strip most of the file. Reject if >30% of lines lost.
+            orig_lines  = len(original_content.splitlines())
+            patch_lines = len(patched_by_gnu.splitlines())
+            if orig_lines > 10 and patch_lines < orig_lines * 0.7:
+                last_err = (
+                    f"patch output lost too many lines "
+                    f"({patch_lines} vs {orig_lines} original) — likely misapplied"
+                )
+                print(f"[PR] GNU patch sanity check failed: {last_err}", flush=True)
+            else:
+                return patched_by_gnu
+        last_err = last_err or (result.stderr or result.stdout or "").strip()
 
     # 2) Context search — find hunk by surrounding lines regardless of line numbers
     contextual = apply_patch_by_context(original_content, diff_patch)
     if contextual is not None:
-        return contextual
+        ctx_lines = len(contextual.splitlines())
+        if orig_line_count > 10 and ctx_lines < orig_line_count * 0.7:
+            print(
+                f"[PR] apply_patch_by_context sanity check failed: "
+                f"{ctx_lines} vs {orig_line_count} original lines", flush=True
+            )
+        else:
+            return contextual
 
     # 3) Give up — commit file with TODO so PR still opens for human review
     note = (
@@ -305,6 +485,7 @@ def create_fix_pr(
     diff_patch: str,
     commit_hash: str,
     tag: str = "",
+    original_content: str | None = None,
 ) -> PRResult:
     """
     Inspired by the Bizom hotfix shell script pattern:
@@ -346,8 +527,15 @@ def create_fix_pr(
     if patch_file != file_path:
         print(f"[PR] Diff targets {patch_file} (error was in {file_path})", flush=True)
 
-    # 4. Fetch original file from the deployed commit, apply AI patch
-    original = get_file_content(repo_slug, patch_file, commit_hash)
+    # 4. Get the original content for the file the diff actually targets.
+    #    When the agent fixes a caller instead of the error-origin file,
+    #    patch_file != file_path — we must fetch patch_file's content, not
+    #    original_content (which is for the error file and would be wrong).
+    if patch_file != file_path:
+        print(f"[PR] Fetching content for diff target {patch_file}", flush=True)
+        original = get_file_content(repo_slug, patch_file, commit_hash)
+    else:
+        original = original_content or get_file_content(repo_slug, patch_file, commit_hash)
     patched  = apply_patch_to_content(original, diff_patch, patch_file)
 
     # 5. Commit the patched file onto the cherry-pick branch
